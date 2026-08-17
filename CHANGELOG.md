@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- The built-in sanitizer now redacts six further credential shapes, completing
+- The built-in sanitizer now redacts seven further credential shapes, completing
   three vendor families it already covered only in part. **GitHub:** every
   token prefix — `gho_` (OAuth, the form `gh auth login` writes to disk),
   `ghu_`, `ghs_`, `ghr_` — where previously only `ghp_` and `github_pat_`
@@ -17,8 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   providers with no prior coverage: **Google OAuth refresh tokens** (`1//…`,
   longer-lived than the `AIza…` keys already handled — they mint access
   tokens until revoked), **Meta / Facebook Graph access tokens** (`EAA…`,
-  ad-account, page and business-management scope), and **Telegram bot
-  tokens** (`<bot-id>:AA…`). These run in `BUILTIN_PATTERN_STRS`, so unlike
+  ad-account, page and business-management scope), **Telegram bot
+  tokens** (`<bot-id>:AA…`), and **GoHighLevel Private Integration Tokens**
+  (`pit-…`, which do not expire until manually revoked). These run in
+  `BUILTIN_PATTERN_STRS`, so unlike
   operator `[sanitize].extra_patterns` they also scrub client-side, before an
   excerpt reaches the local spool or the wire.
 

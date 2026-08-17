@@ -17,8 +17,8 @@
 //! (Anthropic / OpenAI / OpenRouter sk-…, Stripe sk_live_/rk_live_…,
 //! all GitHub token prefixes ghp_/gho_/ghu_/ghs_/ghr_ and fine-grained
 //! github_pat_…, Google AIza… plus OAuth refresh tokens 1//…, Meta /
-//! Facebook Graph EAA…, Telegram bot tokens, Slack xoxb/xoxp…, AWS
-//! AKIA/ASIA…), PEM-bracketed private
+//! Facebook Graph EAA…, Telegram bot tokens, GoHighLevel pit-…, Slack
+//! xoxb/xoxp…, AWS AKIA/ASIA…), PEM-bracketed private
 //! keys, URL-embedded credentials (`postgres://user:pass@host`), and
 //! anything matching the generic `*_(KEY|TOKEN|SECRET|PASSWORD|
 //! CREDENTIAL)=value` shape. Operators can extend the list via
@@ -76,6 +76,14 @@ const BUILTIN_PATTERN_STRS: &[&str] = &[
     // Telegram bot tokens: <bot-id>:AA<secret>. Grants full control of the
     // bot, including reading every message it can see.
     r"\b\d{8,10}:AA[A-Za-z0-9_\-]{32,}",
+    // GoHighLevel Private Integration Tokens. The `pit-` prefix is what the
+    // vendor documents (their MCP guide shows `Bearer pit-your-token`); the
+    // tail is NOT documented anywhere, and every token observed in the wild
+    // carries a UUID. Anchoring on the UUID shape rather than a permissive
+    // tail is deliberate: `pit-` is also an English fragment, so
+    // `pit-[A-Za-z0-9\-]{20,}` would redact "pit-stop-strategy-analysis".
+    // These tokens do not expire until manually revoked.
+    r"pit-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
     // Slack tokens (bot/user/admin/app-level/refresh).
     r"xox[abprs]-[A-Za-z0-9\-]{10,}",
     r"xapp-[A-Za-z0-9\-]{10,}",
@@ -351,6 +359,24 @@ mod tests {
         assert!(out.contains("[REDACTED]"));
         assert!(!out.contains("FAKEfake"));
         assert!(out.contains("done"), "should not swallow trailing context");
+    }
+
+    #[test]
+    fn scrubs_gohighlevel_private_integration_token() {
+        // Uppercase hex on purpose: the vendor documents no case, so the
+        // pattern accepts both. DEADBEEF/CAFEBABE keeps the fixture
+        // unmistakably synthetic.
+        let out = s().scrub("ghl=pit-DEADBEEF-FACE-4B0B-BEEF-CAFEBABE1234");
+        assert!(out.contains("[REDACTED]"));
+        assert!(!out.contains("DEADBEEF"));
+    }
+
+    #[test]
+    fn ghl_pattern_does_not_eat_hyphenated_english() {
+        // Negative control, and the reason the tail is UUID-anchored rather
+        // than permissive: `pit-` is an ordinary English fragment.
+        let out = s().scrub("planning the pit-stop-strategy-analysis for turn 4");
+        assert!(!out.contains("[REDACTED]"));
     }
 
     #[test]
