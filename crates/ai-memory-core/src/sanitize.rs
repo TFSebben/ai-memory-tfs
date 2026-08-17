@@ -73,9 +73,18 @@ const BUILTIN_PATTERN_STRS: &[&str] = &[
     // Meta / Facebook Graph API access tokens (ad accounts, pages,
     // business management).
     r"EAA[A-Za-z0-9]{20,}",
-    // Telegram bot tokens: <bot-id>:AA<secret>. Grants full control of the
-    // bot, including reading every message it can see.
-    r"\b\d{8,10}:AA[A-Za-z0-9_\-]{32,}",
+    // Telegram bot tokens: <bot-id>:<secret>. Grants full control of the bot,
+    // including reading every message it can see. Two branches on purpose:
+    //  - `AA…` is the shape every issued token has taken, left open-ended so a
+    //    future length change cannot silently retire the rule.
+    //  - the second branch matches the shape Telegram's own docs publish
+    //    (`123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11` — 6-digit id, no `AA`),
+    //    length-anchored because without the `AA` anchor a bare `\d+:[\w-]+`
+    //    also matches timestamps, ratios, `host:port` maps, SRT cues and
+    //    `<short-sha>:<hex>` pairs.
+    // Thanks to @tahazarif10 for spotting that the documented example fell
+    // outside the original `\d{8,10}:AA…` form.
+    r"\b\d{6,10}:(?:AA[A-Za-z0-9_\-]{30,}|[A-Za-z0-9_\-]{34,35})\b",
     // GoHighLevel Private Integration Tokens. The `pit-` prefix is what the
     // vendor documents (their MCP guide shows `Bearer pit-your-token`); the
     // tail is NOT documented anywhere, and every token observed in the wild
@@ -359,6 +368,35 @@ mod tests {
         assert!(out.contains("[REDACTED]"));
         assert!(!out.contains("FAKEfake"));
         assert!(out.contains("done"), "should not swallow trailing context");
+    }
+
+    #[test]
+    fn scrubs_telegram_documented_example_shape() {
+        // Regression for #408: Telegram's own Bot API docs publish
+        // `123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11` — a 6-digit id and no
+        // `AA` prefix — which the original `\d{8,10}:AA…` form could not match.
+        // This is the vendor's placeholder, not a live token.
+        let out = s().scrub("token 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11 ok");
+        assert!(out.contains("[REDACTED]"));
+        assert!(!out.contains("ABC-DEF1234"));
+        assert!(out.contains("ok"), "should not swallow trailing context");
+    }
+
+    #[test]
+    fn telegram_pattern_does_not_eat_colon_separated_prose() {
+        // Negative control, and the reason the non-`AA` branch is
+        // length-anchored rather than open-ended: dropping the anchor entirely
+        // makes `\d+:[\w-]+` match all of these.
+        for benign in [
+            "built 2026:08 release notes",
+            "aspect ratio 16:9 widescreen",
+            "ports 8080:my-service-name-here",
+            "00:00:00,000 --> 00:00:04,120 caption",
+            "commit 12345678:deadbeefcafebabe0123456789abcdef",
+        ] {
+            let out = s().scrub(benign);
+            assert!(!out.contains("[REDACTED]"), "false positive on: {benign}");
+        }
     }
 
     #[test]

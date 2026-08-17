@@ -18,7 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer-lived than the `AIza…` keys already handled — they mint access
   tokens until revoked), **Meta / Facebook Graph access tokens** (`EAA…`,
   ad-account, page and business-management scope), **Telegram bot
-  tokens** (`<bot-id>:AA…`), and **GoHighLevel Private Integration Tokens**
+  tokens** (`<bot-id>:…`, covering both the `AA…` form every issued token uses
+  and the shape Telegram's own docs publish), and **GoHighLevel Private
+  Integration Tokens**
   (`pit-…`, which do not expire until manually revoked). These run in
   `BUILTIN_PATTERN_STRS`, so unlike
   operator `[sanitize].extra_patterns` they also scrub client-side, before an
