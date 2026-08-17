@@ -14,8 +14,11 @@
 //! ## What we redact
 //!
 //! Built-in patterns cover bearer tokens, vendor-prefixed API keys
-//! (Anthropic / OpenAI / OpenRouter sk-…, Stripe sk_live_…, GitHub PATs,
-//! Google AIza…, Slack xoxb/xoxp…, AWS AKIA…), PEM-bracketed private
+//! (Anthropic / OpenAI / OpenRouter sk-…, Stripe sk_live_/rk_live_…,
+//! all GitHub token prefixes ghp_/gho_/ghu_/ghs_/ghr_ and fine-grained
+//! github_pat_…, Google AIza… plus OAuth refresh tokens 1//…, Meta /
+//! Facebook Graph EAA…, Telegram bot tokens, Slack xoxb/xoxp…, AWS
+//! AKIA/ASIA…), PEM-bracketed private
 //! keys, URL-embedded credentials (`postgres://user:pass@host`), and
 //! anything matching the generic `*_(KEY|TOKEN|SECRET|PASSWORD|
 //! CREDENTIAL)=value` shape. Operators can extend the list via
@@ -50,12 +53,29 @@ const BUILTIN_PATTERN_STRS: &[&str] = &[
     r#"(?i)bearer\s+[A-Za-z0-9._\-+/=]{16,}"#,
     // Vendor-prefixed API keys.
     r"sk-[A-Za-z0-9_\-]{16,}",
-    r"sk_live_[A-Za-z0-9_\-]{16,}",
-    r"ghp_[A-Za-z0-9]{20,}",
+    // Stripe secret *and* restricted keys. `rk_live_` is scoped rather than
+    // full-access, but the scope is operator-chosen and routinely includes
+    // charges/refunds — not meaningfully safer than `sk_live_`.
+    r"(?:sk|rk)_live_[A-Za-z0-9_\-]{16,}",
+    // Every GitHub token prefix, not only personal-access: `gho_` (OAuth —
+    // what `gh auth login` stores on disk), `ghu_` (user-to-server),
+    // `ghs_` (server-to-server / Actions), `ghr_` (refresh).
+    r"gh[pousr]_[A-Za-z0-9]{20,}",
     r"github_pat_[A-Za-z0-9_]{20,}",
-    r"AKIA[0-9A-Z]{12,}",
+    // AWS access-key IDs: long-lived (AKIA) and STS temporary (ASIA).
+    r"(?:AKIA|ASIA)[0-9A-Z]{12,}",
     // Naked Google / Gemini API keys.
     r"AIza[A-Za-z0-9_\-]{30,}",
+    // Google OAuth refresh tokens. Longer-lived than the AIza keys above:
+    // they mint fresh access tokens until explicitly revoked, so a leaked
+    // one outlives the session it came from.
+    r"1//[0-9A-Za-z_\-]{20,}",
+    // Meta / Facebook Graph API access tokens (ad accounts, pages,
+    // business management).
+    r"EAA[A-Za-z0-9]{20,}",
+    // Telegram bot tokens: <bot-id>:AA<secret>. Grants full control of the
+    // bot, including reading every message it can see.
+    r"\b\d{8,10}:AA[A-Za-z0-9_\-]{32,}",
     // Slack tokens (bot/user/admin/app-level/refresh).
     r"xox[abprs]-[A-Za-z0-9\-]{10,}",
     r"xapp-[A-Za-z0-9\-]{10,}",
@@ -262,6 +282,75 @@ mod tests {
         let out = s().scrub("the key AIzaSy0123456789abcdefghijklmnopqrstuvwx is leaked");
         assert!(out.contains("[REDACTED]"));
         assert!(!out.contains("AIzaSy"));
+    }
+
+    // Every fixture below is a SHAPE, never a live value — same rule as the
+    // AIzaSy… test above, and the same `FAKE` convention used by the
+    // `ghp_FAKE…` fixture in ai-memory-wiki. Keep them obviously synthetic
+    // so credential scanners do not flag this repository.
+
+    #[test]
+    fn scrubs_all_github_token_prefixes() {
+        // ghp_ was already covered; gho_/ghu_/ghs_/ghr_ were not, and gho_
+        // is the prefix `gh auth login` writes to disk.
+        for tok in [
+            "ghp_FAKEfakeFAKEfakeFAKEfake012345678",
+            "gho_FAKEfakeFAKEfakeFAKEfake012345678",
+            "ghu_FAKEfakeFAKEfakeFAKEfake012345678",
+            "ghs_FAKEfakeFAKEfakeFAKEfake012345678",
+            "ghr_FAKEfakeFAKEfakeFAKEfake012345678",
+        ] {
+            let out = s().scrub(&format!("token={tok}"));
+            assert!(out.contains("[REDACTED]"), "not redacted: {tok}");
+            assert!(!out.contains("FAKEfake"), "leaked: {tok}");
+        }
+    }
+
+    #[test]
+    fn scrubs_aws_temporary_session_key_id() {
+        // ASIA… is an STS short-lived key id; AKIA… was already covered.
+        let out = s().scrub("aws_access_key_id ASIAFAKEFAKEFAKEFAKE");
+        assert!(out.contains("[REDACTED]"));
+        assert!(!out.contains("ASIAFAKE"));
+    }
+
+    #[test]
+    fn scrubs_stripe_restricted_key() {
+        let out = s().scrub("stripe=rk_live_FAKEfakeFAKE1234");
+        assert!(out.contains("[REDACTED]"));
+        assert!(!out.contains("FAKEfakeFAKE"));
+    }
+
+    #[test]
+    fn scrubs_meta_graph_access_token() {
+        let out = s().scrub("fb=EAAFAKEfakeFAKEfake0123456789");
+        assert!(out.contains("[REDACTED]"));
+        assert!(!out.contains("FAKEfake"));
+    }
+
+    #[test]
+    fn meta_pattern_does_not_eat_short_base64_runs() {
+        // Negative control. The OpenSSH fixture in
+        // `scrubs_pem_private_key_block` contains the substring "EAAAAA";
+        // the {20,} tail is what stops `EAA…` from matching every base64
+        // blob that happens to contain it.
+        let out = s().scrub("harmless b3BlbnNzaC1rZXktdjEAAAAA value");
+        assert!(!out.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn scrubs_google_oauth_refresh_token() {
+        let out = s().scrub("refresh_token: 1//0gFAKEfakeFAKEfake0123456789");
+        assert!(out.contains("[REDACTED]"));
+        assert!(!out.contains("FAKEfake"));
+    }
+
+    #[test]
+    fn scrubs_telegram_bot_token() {
+        let out = s().scrub("TG 123456789:AAFAKEfakeFAKEfakeFAKEfake0123456789 done");
+        assert!(out.contains("[REDACTED]"));
+        assert!(!out.contains("FAKEfake"));
+        assert!(out.contains("done"), "should not swallow trailing context");
     }
 
     #[test]
