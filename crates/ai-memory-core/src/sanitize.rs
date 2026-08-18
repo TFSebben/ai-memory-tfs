@@ -63,7 +63,16 @@ const BUILTIN_PATTERN_STRS: &[&str] = &[
     r"gh[pousr]_[A-Za-z0-9]{20,}",
     r"github_pat_[A-Za-z0-9_]{20,}",
     // AWS access-key IDs: long-lived (AKIA) and STS temporary (ASIA).
-    r"(?:AKIA|ASIA)[0-9A-Z]{12,}",
+    //
+    // Anchored to the exact published format — a 4-character prefix plus
+    // sixteen more, twenty in total — rather than an open `{12,}` tail.
+    // `ASIA` is also an English word, and an open tail redacted ordinary
+    // uppercase text: `ASIAPACIFICREGION` and `ASIAEAST1CLUSTER` were both
+    // destroyed. That is worse than it sounds here, because the strip runs
+    // BEFORE storage and is irreversible: the observation loses the text with
+    // no error and no way to recover it. The word boundaries keep a real key
+    // from being missed when it sits inside punctuation.
+    r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b",
     // Naked Google / Gemini API keys.
     r"AIza[A-Za-z0-9_\-]{30,}",
     // Google OAuth refresh tokens. Longer-lived than the AIza keys above:
@@ -291,12 +300,17 @@ mod tests {
 
     #[test]
     fn scrubs_naked_google_api_key() {
-        // Fixture is the AIzaSy… shape with random hex padding, NOT a
-        // real key. A previous iteration of this file used a live
-        // value as the fixture; do not do that — automated scanners
-        // (GitGuardian, Google's own) will pick it up and you'll
-        // spend an hour rotating credentials.
-        let out = s().scrub("the key AIzaSy0123456789abcdefghijklmnopqrstuvwx is leaked");
+        // Fixture is the AIzaSy… shape, NOT a real key. A previous
+        // iteration of this file used a live value as the fixture; do not
+        // do that — automated scanners (GitGuardian, Google's own) will
+        // pick it up and you'll spend an hour rotating credentials.
+        //
+        // Kept to 36 characters on purpose. At 40 it also matched the shape
+        // of an AWS *secret* access key (40 chars of the base64 alphabet),
+        // and GitHub push protection blocked pushes of any branch carrying
+        // this file. Google's rule only needs `AIza` plus 30, so the shorter
+        // fixture still exercises it.
+        let out = s().scrub("the key AIzaSyFAKEfake0123456789abcdefghijkl is leaked");
         assert!(out.contains("[REDACTED]"));
         assert!(!out.contains("AIzaSy"));
     }
@@ -320,6 +334,55 @@ mod tests {
             let out = s().scrub(&format!("token={tok}"));
             assert!(out.contains("[REDACTED]"), "not redacted: {tok}");
             assert!(!out.contains("FAKEfake"), "leaked: {tok}");
+        }
+    }
+
+    /// The strip runs before storage and cannot be undone, so a pattern that
+    /// over-matches destroys captured content silently. Every other test here
+    /// asserts that a secret IS redacted; these assert that ordinary text is
+    /// NOT — the direction that was missing when `ASIA` shipped with an open
+    /// tail and started eating uppercase identifiers.
+    #[test]
+    fn leaves_ordinary_text_untouched() {
+        let s = s();
+        for text in [
+            // `ASIA` is an English word. These are the exact shapes an open
+            // `(?:AKIA|ASIA)[0-9A-Z]{12,}` tail destroyed.
+            "ASIAPACIFICREGION",
+            "rollout to ASIAEAST1CLUSTER tonight",
+            "ASIAPAC revenue summary",
+            // `pit-` is an English fragment; the UUID anchor is what keeps
+            // this readable rather than a permissive `pit-[A-Za-z0-9-]{20,}`.
+            "pit-stop-strategy-analysis for the race",
+            // Bare prefixes with nothing key-shaped after them.
+            "the AKIA meeting notes",
+            "EAA is the airport code",
+            // Colon-separated pairs that are not Telegram tokens.
+            "timestamp 1234567:30 remaining",
+            "map 127.0.0.1:8080 to the proxy",
+        ] {
+            assert_eq!(
+                s.scrub(text),
+                text,
+                "ordinary text must survive the strip verbatim: {text}"
+            );
+        }
+    }
+
+    /// A real key is still caught at its published length, and inside
+    /// punctuation, so anchoring the format did not open a hole.
+    #[test]
+    fn still_scrubs_aws_keys_at_their_published_length() {
+        let s = s();
+        for text in [
+            "AKIAFAKEFAKEFAKEFAKE",
+            "aws_access_key_id=ASIAFAKEFAKEFAKEFAKE",
+            "(AKIAFAKEFAKEFAKEFAKE)",
+            "\"ASIAFAKEFAKEFAKEFAKE\",",
+        ] {
+            let out = s.scrub(text);
+            assert!(out.contains("[REDACTED]"), "not redacted: {text}");
+            assert!(!out.contains("FAKEFAKE"), "leaked: {text}");
         }
     }
 

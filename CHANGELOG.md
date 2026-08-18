@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `BUILTIN_PATTERN_STRS`, so unlike
   operator `[sanitize].extra_patterns` they also scrub client-side, before an
   excerpt reaches the local spool or the wire.
+  The AWS rule is anchored to the published twenty-character format rather
+  than an open tail, because `ASIA` is also an English word and an open
+  tail redacted ordinary uppercase text such as `ASIAPACIFICREGION`.
 
   Behaviour change: text matching these shapes is now replaced with
   `[REDACTED]` where it previously persisted verbatim. An operator who
