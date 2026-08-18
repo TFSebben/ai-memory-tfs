@@ -6006,9 +6006,22 @@ model = "gpt-5"
             );
         }
 
-        // Unset: the hints keep naming the documented defaults.
-        assert!(omp_extension_hint_in(None).ends_with(".omp/agent/extensions/ai-memory.ts"));
-        assert!(pi_extension_hint_in(None).ends_with(".pi/agent/extensions/ai-memory.ts"));
+        // Unset: the hints keep naming the documented defaults. Build the
+        // expected tail from path components rather than hardcoding `/` —
+        // `Path::display` renders `\` on Windows, so a slash-literal suffix
+        // asserts a path shape that platform never produces.
+        for (agent_home, hint) in [
+            (".omp", omp_extension_hint_in(None)),
+            (".pi", pi_extension_hint_in(None)),
+        ] {
+            let tail: PathBuf = [agent_home, "agent", "extensions", "ai-memory.ts"]
+                .iter()
+                .collect();
+            assert!(
+                hint.ends_with(&tail.display().to_string()),
+                "unset must keep the documented default, got: {hint}"
+            );
+        }
     }
 
     /// `PI_CODING_AGENT_DIR` relocates Pi's whole agent config home
