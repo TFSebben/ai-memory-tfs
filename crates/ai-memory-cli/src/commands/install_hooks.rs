@@ -162,8 +162,28 @@ pub(crate) fn opencode_plugin_path() -> anyhow::Result<std::path::PathBuf> {
         .join("ai-memory.ts"))
 }
 
+/// `$PI_CODING_AGENT_DIR/extensions/ai-memory.ts` when the var is set, else
 /// `~/.omp/agent/extensions/ai-memory.ts` — OMP lifecycle extension.
+///
+/// `PI_CODING_AGENT_DIR` relocates OMP's whole agent config home
+/// (`~/.omp/agent`), so extensions written to the default path are never
+/// loaded by an OMP configured that way: capture silently does nothing, with
+/// a successful-looking install. ai-memory already honors the variable when
+/// it resolves OMP transcripts (`ManagedHarness::Omp` in
+/// `ai-memory-workstream`), so ignoring it here left one half of the same
+/// install pointing somewhere the other half did not.
 pub(crate) fn omp_extension_path() -> anyhow::Result<std::path::PathBuf> {
+    omp_extension_path_in(std::env::var_os("PI_CODING_AGENT_DIR"))
+}
+
+/// The env value comes in as a parameter so tests can exercise both branches
+/// without mutating process env (mirrors [`codex_hooks_path_in`]).
+fn omp_extension_path_in(
+    env_override: Option<std::ffi::OsString>,
+) -> anyhow::Result<std::path::PathBuf> {
+    if let Some(dir) = crate::commands::path_util::agent_config_home(env_override) {
+        return Ok(dir.join("extensions").join("ai-memory.ts"));
+    }
     Ok(home_dir()
         .context("could not locate $HOME for ~/.omp/agent/extensions")?
         .join(".omp")
@@ -172,8 +192,28 @@ pub(crate) fn omp_extension_path() -> anyhow::Result<std::path::PathBuf> {
         .join("ai-memory.ts"))
 }
 
+/// `$PI_CODING_AGENT_DIR/extensions/ai-memory.ts` when the var is set, else
 /// `~/.pi/agent/extensions/ai-memory.ts` — Pi lifecycle + MCP bridge extension.
+///
+/// `PI_CODING_AGENT_DIR` relocates Pi's whole agent config home
+/// (`~/.pi/agent`), so extensions written to the default path are never
+/// loaded by a Pi configured that way: capture silently does nothing, with a
+/// successful-looking install. ai-memory already honors the variable when it
+/// resolves Pi transcripts (`ManagedHarness::Pi` in `ai-memory-workstream`),
+/// so ignoring it here left one half of the same install pointing somewhere
+/// the other half did not.
 pub(crate) fn pi_extension_path() -> anyhow::Result<std::path::PathBuf> {
+    pi_extension_path_in(std::env::var_os("PI_CODING_AGENT_DIR"))
+}
+
+/// The env value comes in as a parameter so tests can exercise both branches
+/// without mutating process env (mirrors [`codex_hooks_path_in`]).
+fn pi_extension_path_in(
+    env_override: Option<std::ffi::OsString>,
+) -> anyhow::Result<std::path::PathBuf> {
+    if let Some(dir) = crate::commands::path_util::agent_config_home(env_override) {
+        return Ok(dir.join("extensions").join("ai-memory.ts"));
+    }
     Ok(home_dir()
         .context("could not locate $HOME for ~/.pi/agent/extensions")?
         .join(".pi")
@@ -5910,6 +5950,73 @@ model = "gpt-5"
         let extension = build_omp_extension("http://127.0.0.1:49374", Some("tok"), None);
 
         assert_generated_ts_uses_bounded_hook_queue(&extension);
+    }
+
+    /// `PI_CODING_AGENT_DIR` relocates Pi's whole agent config home
+    /// (`~/.pi/agent`), not just session storage, so the extension must follow
+    /// the variable or Pi never loads it — the install reports success and
+    /// capture silently does nothing.
+    #[test]
+    fn pi_extension_path_honours_pi_coding_agent_dir() {
+        let custom = if cfg!(windows) {
+            r"C:\custom\pi-agent"
+        } else {
+            "/custom/pi-agent"
+        };
+        let path = pi_extension_path_in(Some(std::ffi::OsString::from(custom))).unwrap();
+        assert_eq!(
+            path,
+            Path::new(custom).join("extensions").join("ai-memory.ts")
+        );
+
+        // Unset and blank both fall back to ~/.pi/agent/extensions/ai-memory.ts.
+        // Blank counts as unset because an exported-but-empty variable is nearly
+        // always a failed shell expansion, not a request to install into the
+        // filesystem root.
+        for env in [None, Some(std::ffi::OsString::new())] {
+            let path = pi_extension_path_in(env).unwrap();
+            assert!(
+                path.ends_with(
+                    Path::new(".pi")
+                        .join("agent")
+                        .join("extensions")
+                        .join("ai-memory.ts")
+                ),
+                "default must be ~/.pi/agent/extensions/ai-memory.ts, got {}",
+                path.display()
+            );
+        }
+    }
+
+    /// Same relocation contract as Pi: OMP honors `PI_CODING_AGENT_DIR` for
+    /// the default profile and moves `~/.omp/agent` wholesale, extensions
+    /// included.
+    #[test]
+    fn omp_extension_path_honours_pi_coding_agent_dir() {
+        let custom = if cfg!(windows) {
+            r"C:\custom\omp-agent"
+        } else {
+            "/custom/omp-agent"
+        };
+        let path = omp_extension_path_in(Some(std::ffi::OsString::from(custom))).unwrap();
+        assert_eq!(
+            path,
+            Path::new(custom).join("extensions").join("ai-memory.ts")
+        );
+
+        for env in [None, Some(std::ffi::OsString::new())] {
+            let path = omp_extension_path_in(env).unwrap();
+            assert!(
+                path.ends_with(
+                    Path::new(".omp")
+                        .join("agent")
+                        .join("extensions")
+                        .join("ai-memory.ts")
+                ),
+                "default must be ~/.omp/agent/extensions/ai-memory.ts, got {}",
+                path.display()
+            );
+        }
     }
 
     #[test]

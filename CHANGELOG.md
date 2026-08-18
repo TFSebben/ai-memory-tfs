@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `install-hooks --agent pi`, `--agent omp`, and `uninstall` now honor
+  `PI_CODING_AGENT_DIR`, instead of always writing to `~/.pi/agent/extensions/`
+  and `~/.omp/agent/extensions/`. Both agents relocate their whole agent
+  config home (`~/.pi/agent` / `~/.omp/agent`) through that variable, so on an
+  install with it set the extensions landed where the agent never loads them:
+  the install reported success and capture silently did nothing. ai-memory
+  already honored the variable when resolving Pi/OMP transcripts, so the two
+  halves of one install disagreed about where that home was. Installs without
+  `PI_CODING_AGENT_DIR` set are unaffected.
+
 ### Added
 - The built-in sanitizer now redacts seven further credential shapes, completing
   three vendor families it already covered only in part. **GitHub:** every
