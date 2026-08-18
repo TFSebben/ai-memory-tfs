@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Documented OrcaRouter through the existing `openai-compat` provider instead
+  of adding a redundant provider type, including the endpoint, model, and API
+  key mapping needed for deployment. (#410)
+
 ## [1.28.1] - 2026-08-18
 
 ### Security
