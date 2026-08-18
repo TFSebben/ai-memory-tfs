@@ -1717,6 +1717,12 @@ accepts requests. `--allow-insecure-no-auth` can override that refusal only
 for an intentional dangerous plain-HTTP deployment; prefer
 `AI_MEMORY_AUTH_TOKEN` or loopback instead.
 
+In a *container* that refusal becomes a warning, because the container must
+bind `0.0.0.0` internally for `-p` to work at all and cannot see which host
+address you published to. The `-p` above is therefore doing the real work: it
+is what keeps this container loopback-only. If you change it to publish on a
+LAN address, set `AI_MEMORY_AUTH_TOKEN` as well.
+
 Then wire up the agent CLI. Both commands default to no auth and
 `http://127.0.0.1:49374` - no extra flags needed for the local case:
 
