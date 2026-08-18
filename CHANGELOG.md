@@ -18,6 +18,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged ([#412]). The key is documented in the generated
   `config.default.toml` so it is discoverable without reading the source.
 
+### Fixed
+- `install-hooks --agent pi`, `--agent omp`, and `uninstall` now honor
+  `PI_CODING_AGENT_DIR`, instead of always writing to `~/.pi/agent/extensions/`
+  and `~/.omp/agent/extensions/`. Both agents relocate their whole agent
+  config home (`~/.pi/agent` / `~/.omp/agent`) through that variable, so on an
+  install with it set the extensions landed where the agent never loads them:
+  the install reported success and capture silently did nothing. ai-memory
+  already honored the variable when resolving Pi/OMP transcripts, so the two
+  halves of one install disagreed about where that home was. Installs without
+  `PI_CODING_AGENT_DIR` set are unaffected. The manual (non-`--apply`)
+  instructions now name the resolved path too, instead of always printing the
+  `~/.pi/agent` / `~/.omp/agent` default. (#411)
+
+### Changed
+- Documented OrcaRouter through the existing `openai-compat` provider instead
+  of adding a redundant provider type, including the endpoint, model, and API
+  key mapping needed for deployment. (#410)
+
 ## [1.28.1] - 2026-08-18
 
 ### Security

@@ -954,7 +954,9 @@ for hooks; both target OMP's native `.omp` integration surface.
 Pi does not read a native `mcp.json`. ai-memory supports Pi through one
 generated TypeScript extension at `~/.pi/agent/extensions/ai-memory.ts`; the
 same file captures lifecycle events and bridges ai-memory's HTTP MCP tools into
-Pi with `pi.registerTool`.
+Pi with `pi.registerTool`. When `PI_CODING_AGENT_DIR` is set (it relocates
+Pi's whole `~/.pi/agent` home), the extension is written to
+`$PI_CODING_AGENT_DIR/extensions/ai-memory.ts` instead.
 
 ```bash
 ai-memory install-hooks --agent pi --apply \
@@ -1232,6 +1234,7 @@ If you set only the provider, ai-memory picks a sensible default:
 | `AI_MEMORY_LLM_PROVIDER=opencode` | `claude-sonnet-4-6` | [OpenCode Zen/Go](https://opencode.ai) cloud API — OpenAI-compatible endpoint at `opencode.ai/zen/go/v1`. Set `OPENCODE_API_KEY` (key from `opencode.ai/auth`). Alias: `opencode-zen`. |
 | `AI_MEMORY_EMBEDDING_PROVIDER=openai` | `text-embedding-3-small` (1536-dim) | 5× cheaper than `-3-large` with marginal recall loss. |
 | `AI_MEMORY_EMBEDDING_PROVIDER=openai` + `AI_MEMORY_EMBEDDING_BASE_URL=https://openrouter.ai/api/v1` | `openai/text-embedding-3-small` via [OpenRouter](https://openrouter.ai) | Reuses `LLM_API_KEY` or `OPENAI_API_KEY` with the OpenAI-compatible embedding client. |
+| `AI_MEMORY_EMBEDDING_PROVIDER=openai` + `AI_MEMORY_EMBEDDING_BASE_URL=https://api.orcarouter.ai/v1` | `openai/text-embedding-3-small` via [OrcaRouter](https://www.orcarouter.ai) | Reuses `LLM_API_KEY` with the OpenAI-compatible embedding client. |
 | `AI_MEMORY_EMBEDDING_PROVIDER=voyage` | `voyage-3` (1024-dim) | Voyage's current general-purpose recommendation. |
 | `AI_MEMORY_EMBEDDING_PROVIDER=google` / `gemini` | `gemini-embedding-001` (768-dim) | Google-hosted embeddings via `embedContent`. Set `GEMINI_API_KEY` (or `GOOGLE_API_KEY`). |
 | `AI_MEMORY_EMBEDDING_PROVIDER=openai-compat` | no default — set model, dim, and base URL explicitly | Self-hosted engines (Ollama, LM Studio, vLLM). Keyless by default; `LLM_API_KEY` is sent as a bearer token when present (gateways). Example: `AI_MEMORY_EMBEDDING_BASE_URL=http://localhost:11434/v1`, `AI_MEMORY_EMBEDDING_MODEL=nomic-embed-text`, `AI_MEMORY_EMBEDDING_DIM=768`. Switching an existing `openai`+base-URL setup to `openai-compat` changes the stored `{provider, model, dim}` triple — run `ai-memory embed --force` to re-embed. |
@@ -1408,6 +1411,21 @@ through the generic compatibility credential:
 
 Replace the model with another current Atlas model id when needed. ai-memory
 does not select a default for hosted compatibility endpoints.
+
+[OrcaRouter](https://www.orcarouter.ai) uses the same provider; no
+OrcaRouter-specific ai-memory provider is needed. Pass its API key through the
+generic compatibility credential:
+
+```bash
+-e AI_MEMORY_LLM_PROVIDER=openai-compat
+-e AI_MEMORY_LLM_BASE_URL=https://api.orcarouter.ai/v1
+-e AI_MEMORY_LLM_MODEL=openai/gpt-4o
+-e LLM_API_KEY=sk-orca-...
+```
+
+Replace the model with another current OrcaRouter model id (same
+`provider/model` format as OpenRouter, e.g. `anthropic/claude-sonnet-4.6` or
+`deepseek/deepseek-v4-flash`) when needed.
 
 OpenAI-compatible structured calls use the operation's JSON Schema by default:
 

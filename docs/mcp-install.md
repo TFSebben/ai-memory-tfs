@@ -1041,7 +1041,9 @@ ai-memory install-hooks --agent omp --apply
 
 This writes `~/.omp/agent/extensions/ai-memory.ts`, which OMP discovers
 as a direct TypeScript extension on startup. Restart `omp` after
-installing or changing the file.
+installing or changing the file. When `PI_CODING_AGENT_DIR` is set
+(it relocates OMP's whole `~/.omp/agent` home), the extension is written
+to `$PI_CODING_AGENT_DIR/extensions/ai-memory.ts` instead.
 
 **Gotchas:**
 - OMP extensions are TypeScript modules, not shell hooks; stdout is not
@@ -1053,7 +1055,9 @@ installing or changing the file.
 
 **Status:** ✅ MCP and lifecycle capture supported via generated bridge
 extension. Pi has no native `mcp.json`; use `install-hooks --agent pi --apply`
-to write `~/.pi/agent/extensions/ai-memory.ts`.
+to write `~/.pi/agent/extensions/ai-memory.ts`. When `PI_CODING_AGENT_DIR`
+is set (it relocates Pi's whole `~/.pi/agent` home), the extension is
+written to `$PI_CODING_AGENT_DIR/extensions/ai-memory.ts` instead.
 
 ```bash
 ai-memory install-hooks --agent pi --apply
