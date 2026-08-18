@@ -16,7 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the install reported success and capture silently did nothing. ai-memory
   already honored the variable when resolving Pi/OMP transcripts, so the two
   halves of one install disagreed about where that home was. Installs without
-  `PI_CODING_AGENT_DIR` set are unaffected.
+  `PI_CODING_AGENT_DIR` set are unaffected. The manual (non-`--apply`)
+  instructions now name the resolved path too, instead of always printing the
+  `~/.pi/agent` / `~/.omp/agent` default. (#411)
 
 ## [1.28.1] - 2026-08-18
 

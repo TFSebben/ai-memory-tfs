@@ -3030,12 +3030,38 @@ fn apply_to_omp_extension(
     Ok(())
 }
 
+/// The path shown in the manual (non-`--apply`) instructions.
+///
+/// This must name the path the install actually resolves to. Printing the
+/// `~/.omp/agent/...` default to an operator with `PI_CODING_AGENT_DIR` set
+/// would hand them the exact wrong location that `--apply` now avoids — a
+/// hand-copied extension that OMP never loads, with capture silently doing
+/// nothing. Falls back to the documented default only when `$HOME` itself
+/// cannot be resolved and there is no better string to show.
+fn omp_extension_hint_in(env_override: Option<std::ffi::OsString>) -> String {
+    omp_extension_path_in(env_override).map_or_else(
+        |_| "~/.omp/agent/extensions/ai-memory.ts".to_string(),
+        |p| p.display().to_string(),
+    )
+}
+
+/// See [`omp_extension_hint_in`]; same reasoning for Pi.
+fn pi_extension_hint_in(env_override: Option<std::ffi::OsString>) -> String {
+    pi_extension_path_in(env_override).map_or_else(
+        |_| "~/.pi/agent/extensions/ai-memory.ts".to_string(),
+        |p| p.display().to_string(),
+    )
+}
+
 fn render_omp_extension(
     server_url: &str,
     auth_token: Option<&str>,
     project_strategy: Option<&str>,
 ) -> Result<()> {
-    println!("// Oh My Pi / OMP extension — write to ~/.omp/agent/extensions/ai-memory.ts");
+    println!(
+        "// Oh My Pi / OMP extension — write to {}",
+        omp_extension_hint_in(std::env::var_os("PI_CODING_AGENT_DIR"))
+    );
     println!("// Or re-run with `--apply` to install it automatically.");
     println!("// Restart OMP after changing extensions; config is loaded at startup.");
     println!();
@@ -3086,7 +3112,10 @@ fn render_pi_extension(
     auth_token: Option<&str>,
     project_strategy: Option<&str>,
 ) -> Result<()> {
-    println!("// Pi extension — write to ~/.pi/agent/extensions/ai-memory.ts");
+    println!(
+        "// Pi extension — write to {}",
+        pi_extension_hint_in(std::env::var_os("PI_CODING_AGENT_DIR"))
+    );
     println!("// Or re-run with `--apply` to install it automatically.");
     println!("// Restart Pi after changing extensions; MCP tools are bridged by this file.");
     println!();
@@ -5950,6 +5979,36 @@ model = "gpt-5"
         let extension = build_omp_extension("http://127.0.0.1:49374", Some("tok"), None);
 
         assert_generated_ts_uses_bounded_hook_queue(&extension);
+    }
+
+    /// The manual (non-`--apply`) instructions must name the same path
+    /// `--apply` would write to. Printing the `~/.pi/agent` default to an
+    /// operator who set `PI_CODING_AGENT_DIR` would tell them to hand-copy the
+    /// extension exactly where the agent never loads it — reintroducing, in
+    /// the manual path, the silent no-capture this change fixes.
+    #[test]
+    fn extension_hints_follow_pi_coding_agent_dir() {
+        let custom = if cfg!(windows) {
+            r"C:\custom\pi-agent"
+        } else {
+            "/custom/pi-agent"
+        };
+        let env = || Some(std::ffi::OsString::from(custom));
+
+        for hint in [omp_extension_hint_in(env()), pi_extension_hint_in(env())] {
+            assert!(
+                hint.contains("custom") && hint.ends_with("ai-memory.ts"),
+                "hint must point at the relocated agent home, got: {hint}"
+            );
+            assert!(
+                !hint.contains(".pi/agent") && !hint.contains(".omp/agent"),
+                "hint must not advertise the default home when the var is set: {hint}"
+            );
+        }
+
+        // Unset: the hints keep naming the documented defaults.
+        assert!(omp_extension_hint_in(None).ends_with(".omp/agent/extensions/ai-memory.ts"));
+        assert!(pi_extension_hint_in(None).ends_with(".pi/agent/extensions/ai-memory.ts"));
     }
 
     /// `PI_CODING_AGENT_DIR` relocates Pi's whole agent config home
