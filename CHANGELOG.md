@@ -9,9 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Changed the default model for the `gemini` provider from `gemini-2.5-flash`
-  to `gemini-3.5-flash`, because Google will discontinue Gemini 2.5 Flash on
-  October 20, 2026. The thinking-budget workaround is applied to both the
-  legacy model and the new default.
+  to `gemini-3.5-flash`, because Google will discontinue Gemini 2.5 Flash and
+  Gemini 2.5 Flash-Lite on October 20, 2026. The e2e smoke test now defaults
+  to `gemini-3.5-flash-lite` as its second variant. The thinking-budget
+  workaround covers both the legacy models and the new defaults.
 - Documented OrcaRouter through the existing `openai-compat` provider instead
   of adding a redundant provider type, including the endpoint, model, and API
   key mapping needed for deployment. (#410)
