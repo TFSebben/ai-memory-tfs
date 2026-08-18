@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- New `strip_root_combinators` config flag (env `AI_MEMORY_STRIP_ROOT_COMBINATORS`,
+  or `strip_root_combinators = true` in config.toml) strips root-level
+  `anyOf`/`oneOf`/`allOf` from MCP tool input schemas on every `tools/list`.
+  Generic MCP clients such as OpenCode and Cursor never send the `?flavor=`
+  marker, yet forward schemas verbatim to strict upstreams (Moonshot, Bedrock)
+  that reject root combinators with a 400 — this gives operators behind such an
+  upstream a mode-independent opt-in. Runtime "exactly one of" validation is
+  unchanged ([#412]).
 - The built-in sanitizer now redacts seven further credential shapes, completing
   three vendor families it already covered only in part. **GitHub:** every
   token prefix — `gho_` (OAuth, the form `gh auth login` writes to disk),

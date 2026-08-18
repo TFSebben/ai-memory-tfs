@@ -485,7 +485,8 @@ pub async fn run(config: &Config, args: ServeArgs) -> Result<()> {
         .with_active_project(active_project.clone())
         .with_sanitizer(sanitizer.clone())
         .with_trusted_proxy_identity(trusted_proxy_identity_enabled(&config.auth))
-        .with_per_user_slots(config.slots.per_user);
+        .with_per_user_slots(config.slots.per_user)
+        .with_strip_root_combinators(config.strip_root_combinators);
     if let Some(e) = embedder.clone() {
         server = server.with_embedder(e);
     }

@@ -405,6 +405,14 @@ pub struct AiMemoryServer {
     /// keeps manual runs at least as strict as the operator's configured
     /// Phase 1/2 budgets instead of falling back to compiled defaults.
     auto_improve_review_config: AutoImproveReviewConfig,
+    /// Opt-in: strip root-level `anyOf`/`oneOf`/`allOf` from MCP tool input
+    /// schemas on every `tools/list`, even without a `?flavor=` marker
+    /// (issue #412). Generic MCP clients (OpenCode, Cursor) never send the
+    /// flavor marker, and Moonshot/Bedrock reject root combinators with a
+    /// 400 — so operators behind a strict upstream set this via
+    /// `AI_MEMORY_STRIP_ROOT_COMBINATORS=true`. Runtime "exactly one of"
+    /// validation is unchanged.
+    strip_root_combinators: bool,
     /// Cooldown clock for the M8 access-bump reinforcement: the last
     /// instant each page's access counter was bumped. A page returned by
     /// many searches in quick succession is bumped at most once per
@@ -1254,6 +1262,7 @@ impl AiMemoryServer {
             sanitizer: ai_memory_core::Sanitizer::builtin(),
             auto_improve_require_approval: false,
             auto_improve_review_config: default_auto_improve_review_config(),
+            strip_root_combinators: false,
             access_bump_seen: Arc::new(Mutex::new(HashMap::new())),
             trusted_proxy_identity: false,
             per_user_slots: false,
@@ -1277,6 +1286,15 @@ impl AiMemoryServer {
     #[must_use]
     pub fn with_per_user_slots(mut self, enabled: bool) -> Self {
         self.per_user_slots = enabled;
+        self
+    }
+
+    /// Opt in to stripping root-level combinators from MCP tool input schemas
+    /// on every `tools/list`, independent of the `?flavor=` marker (issue
+    /// #412). See [`Self::strip_root_combinators`].
+    #[must_use]
+    pub fn with_strip_root_combinators(mut self, enabled: bool) -> Self {
+        self.strip_root_combinators = enabled;
         self
     }
 
@@ -3854,11 +3872,18 @@ impl ServerHandler for AiMemoryServer {
         // rmcp injects `http::request::Parts` into request extensions in
         // both stateless and stateful modes, so the flavor marker is
         // available even without peer clientInfo.
-        let restricted_schema = context
-            .extensions
-            .get::<http::request::Parts>()
-            .and_then(|parts| parts.uri.query())
-            .is_some_and(has_restricted_schema_flavor);
+        // Operator opt-in (issue #412): generic clients such as OpenCode and
+        // Cursor never send the `?flavor=` marker, yet forward tool schemas
+        // verbatim to strict upstreams (Moonshot, Bedrock) that 400 on root
+        // combinators. `strip_root_combinators` serves the restricted
+        // dialect unconditionally; the flavor marker remains the
+        // per-client override.
+        let restricted_schema = self.strip_root_combinators
+            || context
+                .extensions
+                .get::<http::request::Parts>()
+                .and_then(|parts| parts.uri.query())
+                .is_some_and(has_restricted_schema_flavor);
         if restricted_schema {
             Ok(ListToolsResult::with_all_items(
                 restricted_schema_tool_list(tools),
