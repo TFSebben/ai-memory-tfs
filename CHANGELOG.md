@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.28.1] - 2026-08-18
+
 ### Security
 - Updated `h2` 0.4.14 → 0.4.16 for [RUSTSEC-2026-0258](https://rustsec.org/advisories/RUSTSEC-2026-0258),
   an unbounded-empty-DATA-frame denial of service. `h2` is a transitive
@@ -3321,7 +3323,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidator used server startup default project instead of the
   session's actual project.
 
-[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.28.0...HEAD
+[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.28.1...HEAD
+[1.28.1]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.28.1
 [1.28.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.28.0
 [1.27.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.27.0
 [1.26.1]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.26.1
