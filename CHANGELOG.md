@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Documented OrcaRouter through the existing `openai-compat` provider instead
+  of adding a redundant provider type, including the endpoint, model, and API
+  key mapping needed for deployment. (#410)
+
 ## [1.28.1] - 2026-08-18
 
 ### Security
@@ -42,11 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `[REDACTED]` where it previously persisted verbatim. An operator who
   *wants* one of them kept visible (for example a public bot id) can add it
   to `[sanitize].allowlist`.
-
-### Changed
-- Documented OrcaRouter through the existing `openai-compat` provider instead
-  of adding a redundant provider type, including the endpoint, model, and API
-  key mapping needed for deployment. (#410)
 
 ## [1.28.0] - 2026-08-17
 
