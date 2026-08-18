@@ -34,7 +34,7 @@ pub struct GeminiProvider {
 
 impl GeminiProvider {
     /// Construct a provider given an API key and model id (e.g.
-    /// `gemini-2.5-flash`).
+    /// `gemini-3.5-flash`).
     ///
     /// # Errors
     /// Returns a `reqwest::Error` if the HTTP client cannot be built.
@@ -247,7 +247,7 @@ impl GeminiProvider {
 
 fn default_thinking_config_for(model: &str) -> Option<GeminiThinkingConfig> {
     let model = model.to_ascii_lowercase();
-    if model.contains("gemini-2.5-flash") {
+    if model.contains("gemini-2.5-flash") || model.contains("gemini-3.5-flash") {
         return Some(GeminiThinkingConfig { thinking_budget: 0 });
     }
     None
@@ -586,9 +586,9 @@ mod tests {
     }
 
     #[test]
-    fn build_request_disables_default_thinking_for_25_flash() {
+    fn build_request_disables_default_thinking_for_35_flash() {
         let provider =
-            GeminiProvider::new(SecretString::from("test-key"), "gemini-2.5-flash").unwrap();
+            GeminiProvider::new(SecretString::from("test-key"), "gemini-3.5-flash").unwrap();
         let request = ChatRequest::user_prompt("emit json");
         let body = serde_json::to_value(provider.build_request(&request, None)).unwrap();
         assert_eq!(
