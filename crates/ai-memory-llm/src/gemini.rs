@@ -585,16 +585,24 @@ mod tests {
         assert_eq!(prepared.get("nullable").unwrap(), &json!(true));
     }
 
-    #[test]
-    fn build_request_disables_default_thinking_for_35_flash() {
-        let provider =
-            GeminiProvider::new(SecretString::from("test-key"), "gemini-3.5-flash").unwrap();
+    fn assert_thinking_budget_disabled(model: &str) {
+        let provider = GeminiProvider::new(SecretString::from("test-key"), model).unwrap();
         let request = ChatRequest::user_prompt("emit json");
         let body = serde_json::to_value(provider.build_request(&request, None)).unwrap();
         assert_eq!(
             body.pointer("/generationConfig/thinkingConfig/thinkingBudget"),
             Some(&json!(0))
         );
+    }
+
+    #[test]
+    fn build_request_disables_default_thinking_for_25_flash() {
+        assert_thinking_budget_disabled("gemini-2.5-flash");
+    }
+
+    #[test]
+    fn build_request_disables_default_thinking_for_35_flash() {
+        assert_thinking_budget_disabled("gemini-3.5-flash");
     }
 
     #[test]
