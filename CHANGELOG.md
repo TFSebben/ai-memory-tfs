@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.28.1] - 2026-08-18
+
+### Security
+- Updated `h2` 0.4.14 → 0.4.16 for [RUSTSEC-2026-0258](https://rustsec.org/advisories/RUSTSEC-2026-0258),
+  an unbounded-empty-DATA-frame denial of service. `h2` is a transitive
+  dependency of the HTTP stack ai-memory's own server runs on (axum/hyper), so
+  a `--transport http` deployment was reachable by this, not only outbound
+  client use. Lockfile-only change.
+
 ### Added
 - New `strip_root_combinators` config flag (env `AI_MEMORY_STRIP_ROOT_COMBINATORS`,
   or `strip_root_combinators = true` in config.toml) strips root-level
@@ -45,6 +54,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.28.0] - 2026-08-17
 
 ### Fixed
+- Docker containers no longer refuse to start unauthenticated, which had left
+  every container from the README Quick start crash-looping since v1.27.0
+  (#407). The v1.27.0 bind guard reads a non-loopback bind as evidence of
+  network exposure and refuses without a token. That inference holds on a
+  host, but not inside a container: publishing a port with `-p` *requires*
+  binding `0.0.0.0` in the namespace, and whether that port reaches the
+  network is decided by the host-side publish spec — `-p 127.0.0.1:49374:49374`
+  versus `-p 0.0.0.0:49374:49374` — which the process cannot observe. The
+  documented Quick start passes no token and published to loopback, so it was
+  safe and refused anyway; with the documented `--restart unless-stopped` that
+  became a restart loop. Containers now log a loud warning naming the publish
+  spec as the thing to check, instead of refusing. **The host rule is
+  unchanged** — an unauthenticated non-loopback bind outside a container is
+  still refused. Containers are detected via `/.dockerenv` (Docker),
+  `/run/.containerenv` (Podman), or `AI_MEMORY_IN_CONTAINER`, which the
+  official image now sets.
+
+  Note the `Host` allowlist does not substitute for a token here: it defends
+  against DNS rebinding, where a *browser* sets the header. A client that can
+  route to the port sets `Host` freely. If you publish ai-memory beyond
+  loopback, set `AI_MEMORY_AUTH_TOKEN`.
+- `ai-memory upgrade` no longer tells non-compose Docker users to delete their
+  container and rebuild the `docker run` from memory (#407). It now reconstructs
+  that container's own stop/remove/run — name, restart policy, published ports,
+  mounts, operator-set environment, and an overridden command — and writes it to
+  `${XDG_CACHE_HOME:-~/.cache}/ai-memory/recreate-ai-memory.sh` for review before
+  you run it. The script is written mode 0600 and never echoed, because a real
+  install's environment carries provider API keys and `AI_MEMORY_AUTH_TOKEN`.
+  Environment already baked into the image is deliberately omitted, so the new
+  image's own defaults are not frozen to the old ones. Compose-based installs
+  are unaffected and still upgrade via `docker compose up -d`.
 - `install-hooks --agent codex` and `uninstall` now honor `CODEX_HOME`, instead
   of always writing to `~/.codex/hooks.json`. Codex loads hooks from its
   configured home, so on an install with `CODEX_HOME` set the hooks landed
@@ -3291,7 +3331,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidator used server startup default project instead of the
   session's actual project.
 
-[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.28.0...HEAD
+[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.28.1...HEAD
+[1.28.1]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.28.1
 [1.28.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.28.0
 [1.27.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.27.0
 [1.26.1]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.26.1
