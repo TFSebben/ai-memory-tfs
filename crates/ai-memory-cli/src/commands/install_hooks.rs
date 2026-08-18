@@ -172,28 +172,43 @@ pub(crate) fn opencode_plugin_path() -> anyhow::Result<std::path::PathBuf> {
 /// it resolves OMP transcripts (`ManagedHarness::Omp` in
 /// `ai-memory-workstream`), so ignoring it here left one half of the same
 /// install pointing somewhere the other half did not.
-pub(crate) fn omp_extension_path() -> anyhow::Result<std::path::PathBuf> {
-    omp_extension_path_in(std::env::var_os("PI_CODING_AGENT_DIR"))
+pub(crate) fn omp_extension_path(profile: Option<&str>) -> anyhow::Result<std::path::PathBuf> {
+    let profile = profile.or(std::env::var_os("OMP_PROFILE").as_ref().and_then(|s| s.to_str()));
+    omp_extension_path_in(std::env::var_os("PI_CODING_AGENT_DIR"), profile)
 }
 
 /// The env value comes in as a parameter so tests can exercise both branches
 /// without mutating process env (mirrors [`codex_hooks_path_in`]).
 fn omp_extension_path_in(
     env_override: Option<std::ffi::OsString>,
+    profile: Option<&str>,
 ) -> anyhow::Result<std::path::PathBuf> {
-    if let Some(dir) = crate::commands::path_util::agent_config_home(env_override) {
-        return Ok(dir.join("extensions").join("ai-memory.ts"));
-    }
-    Ok(home_dir()
-        .context("could not locate $HOME for ~/.omp/agent/extensions")?
-        .join(".omp")
-        .join("agent")
-        .join("extensions")
-        .join("ai-memory.ts"))
+    let base_dir = if let Some(dir) = crate::commands::path_util::agent_config_home(env_override) {
+        if let Some(profile_name) = profile {
+            let root = if dir.ends_with("agent") {
+                dir.parent().unwrap_or(&dir).to_path_buf()
+            } else {
+                dir.clone()
+            };
+            root.join("profiles").join(profile_name).join("agent")
+        } else {
+            dir
+        }
+    } else {
+        let root = home_dir()
+            .context("could not locate $HOME for ~/.omp")?
+            .join(".omp");
+        if let Some(profile_name) = profile {
+            root.join("profiles").join(profile_name).join("agent")
+        } else {
+            root.join("agent")
+        }
+    };
+    Ok(base_dir.join("extensions").join("ai-memory-omp.ts"))
 }
 
-/// `$PI_CODING_AGENT_DIR/extensions/ai-memory.ts` when the var is set, else
-/// `~/.pi/agent/extensions/ai-memory.ts` — Pi lifecycle + MCP bridge extension.
+/// `$PI_CODING_AGENT_DIR/extensions/ai-memory-pi.ts` when the var is set, else
+/// `~/.pi/agent/extensions/ai-memory-pi.ts` — Pi lifecycle + MCP bridge extension.
 ///
 /// `PI_CODING_AGENT_DIR` relocates Pi's whole agent config home
 /// (`~/.pi/agent`), so extensions written to the default path are never
@@ -212,14 +227,14 @@ fn pi_extension_path_in(
     env_override: Option<std::ffi::OsString>,
 ) -> anyhow::Result<std::path::PathBuf> {
     if let Some(dir) = crate::commands::path_util::agent_config_home(env_override) {
-        return Ok(dir.join("extensions").join("ai-memory.ts"));
+        return Ok(dir.join("extensions").join("ai-memory-pi.ts"));
     }
     Ok(home_dir()
         .context("could not locate $HOME for ~/.pi/agent/extensions")?
         .join(".pi")
         .join("agent")
         .join("extensions")
-        .join("ai-memory.ts"))
+        .join("ai-memory-pi.ts"))
 }
 
 /// `$KIMI_CODE_HOME/config.toml` when set, else `~/.kimi-code/config.toml`.
@@ -423,7 +438,7 @@ pub fn run(config: &Config, mut args: InstallHooksArgs) -> Result<()> {
     match args.agent {
         AgentChoice::OpenCode => render_opencode_plugin(&server_url, auth, strategy),
         AgentChoice::Pi => render_pi_extension(&server_url, auth, strategy),
-        AgentChoice::Omp => render_omp_extension(&server_url, auth, strategy),
+        AgentChoice::Omp => render_omp_extension(&server_url, auth, strategy, args.profile.as_deref()),
         AgentChoice::ClaudeCode => {
             let hooks_dir = resolve_hooks_dir(args.hooks_dir.as_deref(), args.agent)?;
             let settings_path = match &args.config_file {
@@ -565,7 +580,7 @@ fn existing_agent_config(args: &InstallHooksArgs) -> Option<String> {
             AgentChoice::GeminiCli => gemini_settings_path().ok()?,
             AgentChoice::OpenCode => opencode_plugin_path().ok()?,
             AgentChoice::Pi => pi_extension_path().ok()?,
-            AgentChoice::Omp => omp_extension_path().ok()?,
+            AgentChoice::Omp => omp_extension_path(args.profile.as_deref()).ok()?,
             AgentChoice::Openclaw => openclaw_plugin::default_plugin_dir()
                 .ok()?
                 .join(openclaw_plugin::ENTRYPOINT_TS),
@@ -2994,7 +3009,7 @@ export default AiMemoryHooks;
     )
 }
 
-/// Generate an Oh My Pi extension at `~/.omp/agent/extensions/ai-memory.ts`.
+/// Generate an Oh My Pi extension at `~/.omp/agent/extensions/ai-memory-omp.ts`.
 ///
 /// OMP discovers direct `*.ts` / `*.js` files under `~/.omp/agent/extensions/`
 /// at startup, so no separate settings merge is needed. The extension uses OMP's
@@ -3019,6 +3034,17 @@ fn apply_to_omp_extension(
             ApplyOutcome::NoOp => "already up to date",
         }
     );
+
+    // Clean up legacy ai-memory.ts if it exists to avoid duplicate/conflicting extension loads
+    let legacy_path = path.with_file_name("ai-memory.ts");
+    if legacy_path.exists() && legacy_path != path {
+        if let Err(e) = std::fs::remove_file(&legacy_path) {
+            eprintln!("[ai-memory] warning: could not remove legacy extension file {}: {}", legacy_path.display(), e);
+        } else {
+            println!("✓ Removed legacy extension file {}", legacy_path.display());
+        }
+    }
+
     if !matches!(outcome, ApplyOutcome::NoOp) {
         println!();
         println!(
@@ -3030,17 +3056,15 @@ fn apply_to_omp_extension(
     Ok(())
 }
 
-/// The path shown in the manual (non-`--apply`) instructions.
-///
-/// This must name the path the install actually resolves to. Printing the
-/// `~/.omp/agent/...` default to an operator with `PI_CODING_AGENT_DIR` set
-/// would hand them the exact wrong location that `--apply` now avoids — a
-/// hand-copied extension that OMP never loads, with capture silently doing
-/// nothing. Falls back to the documented default only when `$HOME` itself
-/// cannot be resolved and there is no better string to show.
-fn omp_extension_hint_in(env_override: Option<std::ffi::OsString>) -> String {
-    omp_extension_path_in(env_override).map_or_else(
-        |_| "~/.omp/agent/extensions/ai-memory.ts".to_string(),
+fn omp_extension_hint_in(env_override: Option<std::ffi::OsString>, profile: Option<&str>) -> String {
+    omp_extension_path_in(env_override, profile).map_or_else(
+        |_| {
+            if let Some(name) = profile {
+                format!("~/.omp/profiles/{}/agent/extensions/ai-memory-omp.ts", name)
+            } else {
+                "~/.omp/agent/extensions/ai-memory-omp.ts".to_string()
+            }
+        },
         |p| p.display().to_string(),
     )
 }
@@ -3048,7 +3072,7 @@ fn omp_extension_hint_in(env_override: Option<std::ffi::OsString>) -> String {
 /// See [`omp_extension_hint_in`]; same reasoning for Pi.
 fn pi_extension_hint_in(env_override: Option<std::ffi::OsString>) -> String {
     pi_extension_path_in(env_override).map_or_else(
-        |_| "~/.pi/agent/extensions/ai-memory.ts".to_string(),
+        |_| "~/.pi/agent/extensions/ai-memory-pi.ts".to_string(),
         |p| p.display().to_string(),
     )
 }
@@ -3057,10 +3081,11 @@ fn render_omp_extension(
     server_url: &str,
     auth_token: Option<&str>,
     project_strategy: Option<&str>,
+    profile: Option<&str>,
 ) -> Result<()> {
     println!(
         "// Oh My Pi / OMP extension — write to {}",
-        omp_extension_hint_in(std::env::var_os("PI_CODING_AGENT_DIR"))
+        omp_extension_hint_in(std::env::var_os("PI_CODING_AGENT_DIR"), profile)
     );
     println!("// Or re-run with `--apply` to install it automatically.");
     println!("// Restart OMP after changing extensions; config is loaded at startup.");
@@ -3076,7 +3101,8 @@ fn resolve_omp_extension_path(args: &InstallHooksArgs) -> Result<PathBuf> {
     if let Some(p) = &args.config_file {
         return Ok(p.clone());
     }
-    omp_extension_path()
+    let profile = args.profile.as_deref().or(std::env::var_os("OMP_PROFILE").as_ref().and_then(|s| s.to_str()));
+    omp_extension_path(profile)
 }
 
 fn apply_to_pi_extension(
@@ -3099,6 +3125,17 @@ fn apply_to_pi_extension(
             ApplyOutcome::NoOp => "already up to date",
         }
     );
+
+    // Clean up legacy ai-memory.ts if it exists to avoid duplicate/conflicting extension loads
+    let legacy_path = path.with_file_name("ai-memory.ts");
+    if legacy_path.exists() && legacy_path != path {
+        if let Err(e) = std::fs::remove_file(&legacy_path) {
+            eprintln!("[ai-memory] warning: could not remove legacy extension file {}: {}", legacy_path.display(), e);
+        } else {
+            println!("✓ Removed legacy extension file {}", legacy_path.display());
+        }
+    }
+
     if !matches!(outcome, ApplyOutcome::NoOp) {
         println!();
         println!("Pi loads TypeScript extensions from ~/.pi/agent/extensions/ on next start.");
@@ -5995,9 +6032,9 @@ model = "gpt-5"
         };
         let env = || Some(std::ffi::OsString::from(custom));
 
-        for hint in [omp_extension_hint_in(env()), pi_extension_hint_in(env())] {
+        for hint in [omp_extension_hint_in(env(), None), pi_extension_hint_in(env())] {
             assert!(
-                hint.contains("custom") && hint.ends_with("ai-memory.ts"),
+                hint.contains("custom") && (hint.ends_with("ai-memory-omp.ts") || hint.ends_with("ai-memory-pi.ts")),
                 "hint must point at the relocated agent home, got: {hint}"
             );
             assert!(
@@ -6010,11 +6047,11 @@ model = "gpt-5"
         // expected tail from path components rather than hardcoding `/` —
         // `Path::display` renders `\` on Windows, so a slash-literal suffix
         // asserts a path shape that platform never produces.
-        for (agent_home, hint) in [
-            (".omp", omp_extension_hint_in(None)),
-            (".pi", pi_extension_hint_in(None)),
+        for (agent_home, filename, hint) in [
+            (".omp", "ai-memory-omp.ts", omp_extension_hint_in(None, None)),
+            (".pi", "ai-memory-pi.ts", pi_extension_hint_in(None)),
         ] {
-            let tail: PathBuf = [agent_home, "agent", "extensions", "ai-memory.ts"]
+            let tail: PathBuf = [agent_home, "agent", "extensions", filename]
                 .iter()
                 .collect();
             assert!(
@@ -6038,10 +6075,10 @@ model = "gpt-5"
         let path = pi_extension_path_in(Some(std::ffi::OsString::from(custom))).unwrap();
         assert_eq!(
             path,
-            Path::new(custom).join("extensions").join("ai-memory.ts")
+            Path::new(custom).join("extensions").join("ai-memory-pi.ts")
         );
 
-        // Unset and blank both fall back to ~/.pi/agent/extensions/ai-memory.ts.
+        // Unset and blank both fall back to ~/.pi/agent/extensions/ai-memory-pi.ts.
         // Blank counts as unset because an exported-but-empty variable is nearly
         // always a failed shell expansion, not a request to install into the
         // filesystem root.
@@ -6052,9 +6089,9 @@ model = "gpt-5"
                     Path::new(".pi")
                         .join("agent")
                         .join("extensions")
-                        .join("ai-memory.ts")
+                        .join("ai-memory-pi.ts")
                 ),
-                "default must be ~/.pi/agent/extensions/ai-memory.ts, got {}",
+                "default must be ~/.pi/agent/extensions/ai-memory-pi.ts, got {}",
                 path.display()
             );
         }
@@ -6070,25 +6107,42 @@ model = "gpt-5"
         } else {
             "/custom/omp-agent"
         };
-        let path = omp_extension_path_in(Some(std::ffi::OsString::from(custom))).unwrap();
+        let path = omp_extension_path_in(Some(std::ffi::OsString::from(custom)), None).unwrap();
         assert_eq!(
             path,
-            Path::new(custom).join("extensions").join("ai-memory.ts")
+            Path::new(custom).join("extensions").join("ai-memory-omp.ts")
         );
 
         for env in [None, Some(std::ffi::OsString::new())] {
-            let path = omp_extension_path_in(env).unwrap();
+            let path = omp_extension_path_in(env, None).unwrap();
             assert!(
                 path.ends_with(
                     Path::new(".omp")
                         .join("agent")
                         .join("extensions")
-                        .join("ai-memory.ts")
+                        .join("ai-memory-omp.ts")
                 ),
-                "default must be ~/.omp/agent/extensions/ai-memory.ts, got {}",
+                "default must be ~/.omp/agent/extensions/ai-memory-omp.ts, got {}",
                 path.display()
             );
         }
+    }
+
+    #[test]
+    fn omp_extension_path_honours_profile() {
+        let path = omp_extension_path_in(None, Some("my-profile")).unwrap();
+        assert!(
+            path.ends_with(
+                Path::new(".omp")
+                    .join("profiles")
+                    .join("my-profile")
+                    .join("agent")
+                    .join("extensions")
+                    .join("ai-memory-omp.ts")
+            ),
+            "profile path must be correct, got {}",
+            path.display()
+        );
     }
 
     #[test]
@@ -6102,14 +6156,15 @@ model = "gpt-5"
             auth_token: None,
             as_user: None,
             apply: true,
-            config_file: Some(tmp.path().join("extensions").join("ai-memory.ts")),
+            config_file: Some(tmp.path().join("extensions").join("ai-memory-omp.ts")),
             project_strategy: Some(ProjectStrategyArg::Basename),
+            profile: None,
         };
 
         let path = resolve_omp_extension_path(&args).unwrap();
         assert_eq!(
             path.file_name().and_then(|s| s.to_str()),
-            Some("ai-memory.ts")
+            Some("ai-memory-omp.ts")
         );
         assert_eq!(
             path.parent()
@@ -6122,7 +6177,7 @@ model = "gpt-5"
     #[test]
     fn pi_extension_is_directly_discoverable_by_pi() {
         let tmp = TempDir::new().unwrap();
-        let path = tmp.path().join("extensions").join("ai-memory.ts");
+        let path = tmp.path().join("extensions").join("ai-memory-pi.ts");
         let args = InstallHooksArgs {
             agent: AgentChoice::Pi,
             capture_assistant: false,
@@ -6133,6 +6188,7 @@ model = "gpt-5"
             apply: true,
             config_file: Some(path.clone()),
             project_strategy: Some(ProjectStrategyArg::Basename),
+            profile: None,
         };
 
         let resolved = resolve_pi_extension_path(&args).unwrap();
@@ -6140,7 +6196,7 @@ model = "gpt-5"
         assert_eq!(resolved, path);
         assert_eq!(
             resolved.file_name().and_then(|s| s.to_str()),
-            Some("ai-memory.ts")
+            Some("ai-memory-pi.ts")
         );
         assert_eq!(
             resolved
