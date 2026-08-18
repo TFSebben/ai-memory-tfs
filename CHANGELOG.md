@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Updated `h2` 0.4.14 → 0.4.16 for [RUSTSEC-2026-0258](https://rustsec.org/advisories/RUSTSEC-2026-0258),
+  an unbounded-empty-DATA-frame denial of service. `h2` is a transitive
+  dependency of the HTTP stack ai-memory's own server runs on (axum/hyper), so
+  a `--transport http` deployment was reachable by this, not only outbound
+  client use. Lockfile-only change.
+
 ### Added
 - The built-in sanitizer now redacts seven further credential shapes, completing
   three vendor families it already covered only in part. **GitHub:** every
