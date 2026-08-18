@@ -34,6 +34,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   *wants* one of them kept visible (for example a public bot id) can add it
   to `[sanitize].allowlist`.
 
+### Changed
+- Documented OrcaRouter through the existing `openai-compat` provider instead
+  of adding a redundant provider type, including the endpoint, model, and API
+  key mapping needed for deployment. (#NNN)
+
 ## [1.28.0] - 2026-08-17
 
 ### Fixed
