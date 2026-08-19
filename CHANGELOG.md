@@ -19,6 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `:homelab` tag and explains that release tags are published by CI only.
 
 ### Added
+- Added a `flake.nix` so NixOS and Nix users can build and run ai-memory
+  without the Rust toolchain or Docker: `nix build`, `nix run . --
+  --version`, or `nix develop` for a dev shell. The build is self-contained
+  (SQLite bundled, libgit2 vendored, rustls with webpki-roots — no OpenSSL,
+  no system-library hunting). The flake skips the packaging test suite
+  because those tests exercise the Docker-wrapper shell script and need
+  `docker`/`podman` on PATH; the rest of the workspace tests can be run via
+  `nix develop -c cargo test --workspace`. Flake inputs are pinned to
+  explicit revisions rather than floating branches, so the build is
+  reproducible, and a `nix` CI job builds the flake and runs the resulting
+  binary whenever a Nix build input changes plus weekly, so the packaging
+  cannot rot unnoticed. ([#405])
 - New `strip_root_combinators` config flag (env `AI_MEMORY_STRIP_ROOT_COMBINATORS`,
   or `strip_root_combinators = true` in config.toml) strips root-level
   `anyOf`/`oneOf`/`allOf` from MCP tool input schemas on every `tools/list`.
