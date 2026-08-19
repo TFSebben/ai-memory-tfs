@@ -30,7 +30,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `config.default.toml` so it is discoverable without reading the source.
 
 ### Fixed
-- `install-hooks` now uses agent-distinct filenames (`ai-memory-pi.ts` for Pi and `ai-memory-omp.ts` for OMP) to eliminate silent extension overwrites when `PI_CODING_AGENT_DIR` is set for both agents, automatically cleaning up legacy `ai-memory.ts` files. Added support for OMP profiles via `--profile` flag and `OMP_PROFILE` environment variable. (#421)
+- `install-hooks` now writes agent-distinct extension filenames
+  (`ai-memory-pi.ts`, `ai-memory-omp.ts`) instead of both agents sharing
+  `ai-memory.ts`, so a Pi install and an OMP install no longer overwrite each
+  other when `PI_CODING_AGENT_DIR` points them at one home. A superseded
+  `ai-memory.ts` is removed only when it carries this tool's generated marker
+  *for that same agent* — a file you wrote yourself, or the other agent's, is
+  left alone and reported. OMP profiles are supported via `--profile` or
+  `OMP_PROFILE`; `PI_CODING_AGENT_DIR` takes precedence over a profile, since
+  it names the agent directory outright.
+
+  Note distinct filenames stop the overwrite but do **not** make a shared
+  directory safe: each agent loads every `*.ts` it finds there, so installing
+  both into one home captures every event twice, once per agent identity.
+  That collision is upstream — both agents read the same environment
+  variable — so `install-hooks` now warns when it detects one and points at
+  the two ways out. (#421)
 - `install-hooks --agent pi`, `--agent omp`, and `uninstall` now honor
   `PI_CODING_AGENT_DIR`, instead of always writing to `~/.pi/agent/extensions/`
   and `~/.omp/agent/extensions/`. Both agents relocate their whole agent
