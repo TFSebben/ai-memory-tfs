@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `bin/deploy` now refuses to push a single-architecture build over a tag that
+  already resolves to a multi-architecture manifest (#427). It builds for the
+  architecture of the machine it runs on, so deploying a homelab from an x86
+  workstation to `IMAGE=akitaonrails/ai-memory:latest` replaced the
+  amd64+arm64 manifest CI had published with an amd64-only image, and every
+  arm64 host pulling `:latest` failed with `exec format error`. The shipped
+  `bin/deploy.env.example` also defaulted `IMAGE` to `:latest`, so following
+  the documented setup led straight into it; it now defaults to a private
+  `:homelab` tag and explains that release tags are published by CI only.
+
+### Added
+- New `strip_root_combinators` config flag (env `AI_MEMORY_STRIP_ROOT_COMBINATORS`,
+  or `strip_root_combinators = true` in config.toml) strips root-level
+  `anyOf`/`oneOf`/`allOf` from MCP tool input schemas on every `tools/list`.
+  Generic MCP clients such as OpenCode and Cursor never send the `?flavor=`
+  marker, yet forward schemas verbatim to strict upstreams (Moonshot, Bedrock)
+  that reject root combinators with a 400 — this gives operators behind such an
+  upstream a mode-independent opt-in. Runtime "exactly one of" validation is
+  unchanged ([#412]). The key is documented in the generated
+  `config.default.toml` so it is discoverable without reading the source.
+
+### Fixed
+- `install-hooks --agent pi`, `--agent omp`, and `uninstall` now honor
+  `PI_CODING_AGENT_DIR`, instead of always writing to `~/.pi/agent/extensions/`
+  and `~/.omp/agent/extensions/`. Both agents relocate their whole agent
+  config home (`~/.pi/agent` / `~/.omp/agent`) through that variable, so on an
+  install with it set the extensions landed where the agent never loads them:
+  the install reported success and capture silently did nothing. ai-memory
+  already honored the variable when resolving Pi/OMP transcripts, so the two
+  halves of one install disagreed about where that home was. Installs without
+  `PI_CODING_AGENT_DIR` set are unaffected. The manual (non-`--apply`)
+  instructions now name the resolved path too, instead of always printing the
+  `~/.pi/agent` / `~/.omp/agent` default. (#411)
+
 ### Changed
 - Changed the default model for the `gemini` provider from `gemini-2.5-flash`
   to `gemini-3.5-flash`, because Google will discontinue Gemini 2.5 Flash and

@@ -156,6 +156,17 @@ pub struct Config {
     /// `install-hooks --capture-assistant`. Set with
     /// `AI_MEMORY_CAPTURE_ASSISTANT=true`.
     pub capture_assistant: bool,
+    /// Strip root-level `anyOf`/`oneOf`/`allOf` from MCP tool input
+    /// schemas (e.g. `memory_read_page`'s "exactly one of path/query"
+    /// contract) on every `tools/list`, regardless of client or `?flavor=`
+    /// marker. Moonshot and Bedrock reject root combinators with a 400, and
+    /// generic MCP clients (OpenCode, Cursor) never send the flavor marker —
+    /// so operators routing through a strict upstream can opt in here.
+    /// Runtime "exactly one of" validation is unchanged and remains the
+    /// enforcement backstop (issue #412). Set with
+    /// `AI_MEMORY_STRIP_ROOT_COMBINATORS=true` or `strip_root_combinators = true`
+    /// in config.toml.
+    pub strip_root_combinators: bool,
     /// Opt-in post-RRF reranker for `memory_query`. Only `"llm"` is
     /// supported: LLM-as-judge over the configured LLM provider, so it
     /// requires `AI_MEMORY_LLM_PROVIDER` too. Off by default — it puts
@@ -543,6 +554,7 @@ impl Default for Config {
             llm_compat_strict: true,
             consolidate_on_session_end: false,
             capture_assistant: false,
+            strip_root_combinators: false,
             reranker: None,
             embedding_provider: None,
             embedding_model: None,

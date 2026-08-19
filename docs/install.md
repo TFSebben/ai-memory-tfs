@@ -954,7 +954,9 @@ for hooks; both target OMP's native `.omp` integration surface.
 Pi does not read a native `mcp.json`. ai-memory supports Pi through one
 generated TypeScript extension at `~/.pi/agent/extensions/ai-memory.ts`; the
 same file captures lifecycle events and bridges ai-memory's HTTP MCP tools into
-Pi with `pi.registerTool`.
+Pi with `pi.registerTool`. When `PI_CODING_AGENT_DIR` is set (it relocates
+Pi's whole `~/.pi/agent` home), the extension is written to
+`$PI_CODING_AGENT_DIR/extensions/ai-memory.ts` instead.
 
 ```bash
 ai-memory install-hooks --agent pi --apply \
