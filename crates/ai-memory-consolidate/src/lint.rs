@@ -122,6 +122,33 @@ pub fn stale_days_for(lambda: f64) -> f64 {
     }
 }
 
+/// Options for [`run_lint`].
+///
+/// A struct rather than three positional parameters: `false, false` at a
+/// call site said nothing about which switch was which, and the threshold
+/// input has to travel alongside them.
+#[derive(Debug, Clone, Copy)]
+pub struct LintOptions {
+    /// When `true`, no `_lint/<date>.md` page is written.
+    pub dry_run: bool,
+    /// When `false`, the LLM contradiction pass is skipped even if a
+    /// provider was supplied.
+    pub use_llm: bool,
+    /// The operator's `[decay] lambda`. The stale threshold is derived from
+    /// it — see [`stale_days_for`].
+    pub decay_lambda: f64,
+}
+
+impl Default for LintOptions {
+    fn default() -> Self {
+        Self {
+            dry_run: false,
+            use_llm: true,
+            decay_lambda: 0.02,
+        }
+    }
+}
+
 /// Run the lint pass.
 ///
 /// * `llm` — when `Some`, the contradiction pass runs; otherwise the
@@ -141,10 +168,13 @@ pub async fn run_lint(
     llm: Option<&std::sync::Arc<dyn LlmProvider>>,
     workspace_id: WorkspaceId,
     project_id: ProjectId,
-    dry_run: bool,
-    use_llm: bool,
-    decay_lambda: f64,
+    options: LintOptions,
 ) -> Result<LintReport, LintError> {
+    let LintOptions {
+        dry_run,
+        use_llm,
+        decay_lambda,
+    } = options;
     let candidates = reader.decay_candidates(workspace_id, project_id).await?;
     let mut findings = rule_based_findings(&candidates, stale_days_for(decay_lambda));
 
@@ -509,7 +539,8 @@ mod tests {
             salience: None,
         };
 
-        let default_lambda = rule_based_findings(&[candidate.clone()], stale_days_for(0.02));
+        let default_lambda =
+            rule_based_findings(std::slice::from_ref(&candidate), stale_days_for(0.02));
         assert!(
             default_lambda.iter().any(|f| f.kind == "stale"),
             "60d page must be stale at the default lambda"

@@ -2422,9 +2422,11 @@ impl AiMemoryServer {
             self.llm.as_ref(),
             ws,
             proj,
-            args.dry_run.unwrap_or(false),
-            !args.no_llm.unwrap_or(false),
-            self.decay_params.lambda,
+            ai_memory_consolidate::LintOptions {
+                dry_run: args.dry_run.unwrap_or(false),
+                use_llm: !args.no_llm.unwrap_or(false),
+                decay_lambda: self.decay_params.lambda,
+            },
         )
         .await
         .map_err(|e| McpError::internal_error(e.to_string(), None))?;

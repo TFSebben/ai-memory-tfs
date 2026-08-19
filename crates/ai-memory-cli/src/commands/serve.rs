@@ -1264,9 +1264,11 @@ async fn run_scheduled_lint_tick(
             llm,
             scope.workspace_id,
             scope.project_id,
-            false,
-            false,
-            decay_lambda,
+            ai_memory_consolidate::LintOptions {
+                dry_run: false,
+                use_llm: false,
+                decay_lambda,
+            },
         )
         .await
         {
