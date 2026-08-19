@@ -2424,6 +2424,7 @@ impl AiMemoryServer {
             proj,
             args.dry_run.unwrap_or(false),
             !args.no_llm.unwrap_or(false),
+            self.decay_params.lambda,
         )
         .await
         .map_err(|e| McpError::internal_error(e.to_string(), None))?;

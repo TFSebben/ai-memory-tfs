@@ -2716,6 +2716,7 @@ async fn handle_lint(
         proj,
         req.dry_run,
         !req.no_llm,
+        state.decay_params.lambda,
     )
     .await
     .map(|report| {
