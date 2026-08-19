@@ -36,3 +36,7 @@ evals/runs/
 
 # ai-memory atomic-write backups (apply_atomic in apply_shared.rs)
 *.bak-*
+
+# Nix flake build output (nix build / nix run).
+result
+result-*
