@@ -18,7 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`pending`, `oldest_age_ms`, `retries_total`). Only files matching the
   spool's own naming convention are counted, so a foreign `.json` in that
   directory cannot inflate the pending count or be reported as an
-  epoch-aged entry. (#428)
+  epoch-aged entry. The section is also reported when the server cannot be
+  reached — the spool exists to buffer events while the server is down, so
+  that is precisely when its depth is worth seeing; it goes to stderr, so
+  `--json` consumers still get a single object on stdout. (#428)
 
 ## [1.29.0] - 2026-08-19
 

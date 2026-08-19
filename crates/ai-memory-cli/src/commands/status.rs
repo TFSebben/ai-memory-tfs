@@ -8,7 +8,7 @@ use ai_memory_llm::{ProviderHealthSnapshot, ProviderHealthStatus, ProviderRoleHe
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use super::hook_spool::{spool_dir, spool_health};
+use super::hook_spool::{SpoolHealth, spool_dir, spool_health};
 use crate::cli::StatusArgs;
 use crate::config::Config;
 use crate::http_client::{ServerEndpoint, get_json};
@@ -67,12 +67,54 @@ struct EmbeddingTriple {
 /// Run the `status` subcommand.
 ///
 /// # Errors
+/// Print local spool state when the server could not be reached.
+///
+/// Goes to stderr so it cannot corrupt `--json` consumers, which expect a
+/// single object on stdout and get a non-zero exit here anyway. The
+/// unreachable-server error still propagates unchanged; this only adds the
+/// local half of the picture that the caller can actually act on.
+fn report_offline_spool(spool: &SpoolHealth, json: bool) {
+    if json {
+        if let Ok(rendered) = serde_json::to_string(spool) {
+            eprintln!("local spool (server unreachable): {rendered}");
+        }
+        return;
+    }
+    eprintln!("local spool (server unreachable):");
+    eprintln!("  pending:    {}", spool.pending);
+    eprintln!("  oldest:     {}", spool_age_line(spool.oldest_age_ms));
+    eprintln!("  retries:    {}", spool.retries_total);
+    if spool.pending > 0 {
+        eprintln!(
+            "  {} event(s) are queued locally and will be delivered once the \
+             server is reachable again.",
+            spool.pending
+        );
+    }
+}
+
 /// Returns an error if the server is unreachable, returns non-2xx, or
 /// the response can't be parsed.
 pub async fn run(config: &Config, args: StatusArgs) -> Result<()> {
     let ep = ServerEndpoint::from_config_resolving_auth(config).await;
-    let report: Report = get_json(&ep, "/admin/status", &[]).await?;
+
+    // Read the spool BEFORE contacting the server, and surface it even when
+    // that call fails.
+    //
+    // The spool exists to buffer hook events while the server is
+    // unreachable, so "how much is queued locally?" is most worth answering
+    // precisely when the server is down. Computing it after `get_json` meant
+    // the one question this section exists for could not be asked in the one
+    // situation that prompts it.
     let spool = spool_health(&spool_dir(&config.data_dir));
+
+    let report: Report = match get_json::<Report>(&ep, "/admin/status", &[]).await {
+        Ok(report) => report,
+        Err(err) => {
+            report_offline_spool(&spool, args.json);
+            return Err(err);
+        }
+    };
 
     if args.json {
         println!(
@@ -218,6 +260,34 @@ fn error_detail(role: &ProviderRoleHealthSnapshot) -> String {
 mod tests {
     use super::*;
     use jiff::Timestamp;
+
+    /// The offline path must be readable and, critically, must not write the
+    /// spool object to stdout in `--json` mode: consumers there expect one
+    /// object and this call exits non-zero anyway.
+    #[test]
+    fn offline_spool_report_is_content_free_and_serialises() {
+        let spool = SpoolHealth {
+            pending: 2,
+            oldest_age_ms: Some(900_000),
+            retries_total: 4,
+        };
+        let rendered = serde_json::to_string(&spool).expect("SpoolHealth serialises");
+        assert_eq!(
+            rendered,
+            r#"{"pending":2,"oldest_age_ms":900000,"retries_total":4}"#
+        );
+        // The shape is the contract: counts and ages only. If a field
+        // carrying captured text is ever added, this fails loudly.
+        let value: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        let keys: Vec<_> = value.as_object().unwrap().keys().cloned().collect();
+        assert_eq!(keys, vec!["pending", "oldest_age_ms", "retries_total"]);
+
+        // Both render paths must tolerate an empty spool.
+        report_offline_spool(&SpoolHealth::default(), false);
+        report_offline_spool(&SpoolHealth::default(), true);
+        report_offline_spool(&spool, false);
+        report_offline_spool(&spool, true);
+    }
 
     #[test]
     fn provider_health_line_renders_unknown_and_disabled() {
