@@ -7,17 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- `bin/deploy` now refuses to push a single-architecture build over a tag that
-  already resolves to a multi-architecture manifest (#427). It builds for the
-  architecture of the machine it runs on, so deploying a homelab from an x86
-  workstation to `IMAGE=akitaonrails/ai-memory:latest` replaced the
-  amd64+arm64 manifest CI had published with an amd64-only image, and every
-  arm64 host pulling `:latest` failed with `exec format error`. The shipped
-  `bin/deploy.env.example` also defaulted `IMAGE` to `:latest`, so following
-  the documented setup led straight into it; it now defaults to a private
-  `:homelab` tag and explains that release tags are published by CI only.
-
 ### Added
 - Added a `flake.nix` so NixOS and Nix users can build and run ai-memory
   without the Rust toolchain or Docker: `nix build`, `nix run . --
@@ -41,6 +30,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged ([#412]). The key is documented in the generated
   `config.default.toml` so it is discoverable without reading the source.
 
+### Changed
+- Changed the default model for the `gemini` provider from `gemini-2.5-flash`
+  to `gemini-3.5-flash`. Google has scheduled the 2.5 Flash family for
+  retirement — the Gemini API deprecation table lists `gemini-2.5-flash-lite`
+  for **October 16, 2026** (Vertex AI and the Agent Platform list October 20;
+  ai-memory talks to the Gemini API, so the earlier date is the one that
+  applies). The thinking-budget workaround still covers the legacy models.
+  Note it is deliberately **not** applied to `gemini-3.5-flash-lite`, which
+  rejects `thinkingConfig` outright with HTTP 400 — unlike
+  `gemini-2.5-flash-lite`, which accepts it — so that model omits the field
+  and the e2e smoke test keeps `gemini-2.5-flash-lite` as its second
+  variant. (#423)
+- Documented OrcaRouter through the existing `openai-compat` provider instead
+  of adding a redundant provider type, including the endpoint, model, and API
+  key mapping needed for deployment. (#410)
+
 ### Improved
 - The `open_questions` field in automatic SessionEnd handoffs now uses
   multi-signal heuristics instead of blindly copying the last user prompt.
@@ -51,6 +56,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so the receiver knows the previous session did not finish cleanly. (#425)
 
 ### Fixed
+- `bin/deploy` now refuses to push a single-architecture build over a tag that
+  already resolves to a multi-architecture manifest (#427). It builds for the
+  architecture of the machine it runs on, so deploying a homelab from an x86
+  workstation to `IMAGE=akitaonrails/ai-memory:latest` replaced the
+  amd64+arm64 manifest CI had published with an amd64-only image, and every
+  arm64 host pulling `:latest` failed with `exec format error`. The shipped
+  `bin/deploy.env.example` also defaulted `IMAGE` to `:latest`, so following
+  the documented setup led straight into it; it now defaults to a private
+  `:homelab` tag and explains that release tags are published by CI only.
 - `install-hooks` now writes agent-distinct extension filenames
   (`ai-memory-pi.ts`, `ai-memory-omp.ts`) instead of both agents sharing
   `ai-memory.ts`, so a Pi install and an OMP install no longer overwrite each
@@ -78,22 +92,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PI_CODING_AGENT_DIR` set are unaffected. The manual (non-`--apply`)
   instructions now name the resolved path too, instead of always printing the
   `~/.pi/agent` / `~/.omp/agent` default. (#411)
-
-### Changed
-- Changed the default model for the `gemini` provider from `gemini-2.5-flash`
-  to `gemini-3.5-flash`. Google has scheduled the 2.5 Flash family for
-  retirement — the Gemini API deprecation table lists `gemini-2.5-flash-lite`
-  for **October 16, 2026** (Vertex AI and the Agent Platform list October 20;
-  ai-memory talks to the Gemini API, so the earlier date is the one that
-  applies). The thinking-budget workaround still covers the legacy models.
-  Note it is deliberately **not** applied to `gemini-3.5-flash-lite`, which
-  rejects `thinkingConfig` outright with HTTP 400 — unlike
-  `gemini-2.5-flash-lite`, which accepts it — so that model omits the field
-  and the e2e smoke test keeps `gemini-2.5-flash-lite` as its second
-  variant. (#423)
-- Documented OrcaRouter through the existing `openai-compat` provider instead
-  of adding a redundant provider type, including the endpoint, model, and API
-  key mapping needed for deployment. (#410)
 
 ## [1.28.1] - 2026-08-18
 
