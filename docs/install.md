@@ -1442,6 +1442,14 @@ or returns a malformed response shape. For an incompatible endpoint, opt out:
 -e AI_MEMORY_LLM_COMPAT_STRICT=false
 ```
 
+Hosted gateways that stream long completions past the default 300-second
+per-request ceiling fail with `http: error sending request`; raise the
+ceiling to match the gateway's worst-case generation time:
+
+```bash
+-e AI_MEMORY_LLM_TIMEOUT_SECS=900
+```
+
 #### Match the consolidation budget to a local model's context window
 
 Consolidation defaults to an approximate 100k-token input target plus a 32k

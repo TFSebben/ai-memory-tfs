@@ -140,8 +140,10 @@ pub struct Config {
     /// already supplies its own schema. Set
     /// `AI_MEMORY_LLM_COMPAT_STRICT=false` for an incompatible endpoint.
     pub llm_compat_strict: bool,
-    /// Per-request timeout (seconds) applied to every chat provider's
-    /// HTTP calls, including the Copilot token exchange. Defaults to
+    /// Per-request timeout (seconds) applied to every chat
+    /// completion request and to the Copilot token exchange; the
+    /// openai-oauth token refresh keeps the built-in default ceiling
+    /// (it is a quick grant exchange). Defaults to
     /// `ai_memory_llm::DEFAULT_REQUEST_TIMEOUT_SECS` (300s), which
     /// tolerates a local engine cold-loading a large model. Raise it
     /// for slow hosted gateways whose long completions exceed the
