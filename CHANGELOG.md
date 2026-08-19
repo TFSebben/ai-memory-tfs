@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Corrected the Pi/OMP extension filenames in `README.md`, `docs/install.md`,
+  and `docs/mcp-install.md`, which still described the pre-rename
+  `ai-memory.ts` after the agent-distinct `ai-memory-pi.ts` /
+  `ai-memory-omp.ts` split. Following those instructions by hand created the
+  very duplicate-load the split exists to prevent, since each agent loads
+  every `*.ts` in its extensions directory. Documented `--profile` /
+  `OMP_PROFILE` and the `PI_CODING_AGENT_DIR` precedence alongside them.
+
 ### Added
 - New `llm_timeout_secs` config key (env `AI_MEMORY_LLM_TIMEOUT_SECS`, or
   `llm_timeout_secs = 900` in config.toml) overrides the per-request timeout

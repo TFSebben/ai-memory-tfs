@@ -937,7 +937,7 @@ docker run --rm akitaonrails/ai-memory:latest \
     --server-url "http://homelab:49374/mcp" \
     --auth-token "$TOKEN"
 
-# Extension — write to ~/.omp/agent/extensions/ai-memory.ts.
+# Extension — write to ~/.omp/agent/extensions/ai-memory-omp.ts.
 # If you have the local wrapper installed, prefer `--apply`:
 ai-memory install-hooks --agent omp --apply \
     --server-url "http://homelab:49374" \
@@ -952,11 +952,32 @@ for hooks; both target OMP's native `.omp` integration surface.
 ### Pi
 
 Pi does not read a native `mcp.json`. ai-memory supports Pi through one
-generated TypeScript extension at `~/.pi/agent/extensions/ai-memory.ts`; the
+generated TypeScript extension at `~/.pi/agent/extensions/ai-memory-pi.ts`; the
 same file captures lifecycle events and bridges ai-memory's HTTP MCP tools into
 Pi with `pi.registerTool`. When `PI_CODING_AGENT_DIR` is set (it relocates
 Pi's whole `~/.pi/agent` home), the extension is written to
-`$PI_CODING_AGENT_DIR/extensions/ai-memory.ts` instead.
+`$PI_CODING_AGENT_DIR/extensions/ai-memory-pi.ts` instead.
+
+The Pi and OMP extensions use distinct filenames (`ai-memory-pi.ts` and
+`ai-memory-omp.ts`) so installing one never overwrites the other. They are
+not interchangeable — only Pi's bridges MCP tools.
+
+#### OMP profiles
+
+`omp --profile <name>` relocates OMP's agent home to
+`~/.omp/profiles/<name>/agent`. Point the installer at the same profile so
+the extension lands where that profile loads it:
+
+```bash
+ai-memory install-hooks --agent omp --profile work --apply
+# or set it once for the shell:
+OMP_PROFILE=work ai-memory install-hooks --agent omp --apply
+```
+
+`--profile` takes precedence over `OMP_PROFILE`, and `uninstall --profile
+<name>` removes the same file. `PI_CODING_AGENT_DIR` overrides **both** —
+when it is set it names the agent directory outright, so no profile
+subdirectory is derived from it.
 
 ```bash
 ai-memory install-hooks --agent pi --apply \
