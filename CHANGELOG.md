@@ -19,14 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `:homelab` tag and explains that release tags are published by CI only.
 
 ### Added
-- Added a `flake.nix` so NixOS and Nix users can build and run ai-memory
-  without the Rust toolchain or Docker: `nix build`, `nix run . --
-  --version`, or `nix develop` for a dev shell. The build is self-contained
-  (SQLite bundled, libgit2 vendored, rustls with webpki-roots — no OpenSSL,
-  no system-library hunting). The flake skips the packaging test suite
-  because those tests exercise the Docker-wrapper shell script and need
-  `docker`/`podman` on PATH; the rest of the workspace tests can be run via
-  `nix develop -c cargo test --workspace`. ([#405])
 - New `strip_root_combinators` config flag (env `AI_MEMORY_STRIP_ROOT_COMBINATORS`,
   or `strip_root_combinators = true` in config.toml) strips root-level
   `anyOf`/`oneOf`/`allOf` from MCP tool input schemas on every `tools/list`.
@@ -42,10 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   multi-signal heuristics instead of blindly copying the last user prompt.
   Trailing acknowledgments ("ok", "thanks", "好的") are filtered; a
   question-mark-terminated final prompt is tagged as an unresolved question;
-  an edit/write tool call without a subsequent Stop produces an explicit
-  "changes not verified" advisory; and a mid-task exit (Stop without
-  SessionEnd) is flagged so the receiver knows the previous session did not
-  finish cleanly. (#NNN)
+  file-tool activity without a subsequent Stop produces an advisory to check
+  the working tree; and a mid-task exit (Stop without SessionEnd) is flagged
+  so the receiver knows the previous session did not finish cleanly. (#425)
 
 ### Fixed
 - `install-hooks --agent pi`, `--agent omp`, and `uninstall` now honor

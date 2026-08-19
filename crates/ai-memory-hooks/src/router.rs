@@ -2981,16 +2981,26 @@ fn derive_open_questions(
         }
     }
 
-    // Heuristic 2: edit/write without a subsequent Stop → unverified changes.
+    // Heuristic 2: file activity with no subsequent Stop → the session ended
+    // abnormally while working in the tree.
+    //
+    // The signal is the tool *family*, not the tool name. A PostToolUse
+    // observation's title is `canonical_tool_name(tool_family)`, which is
+    // only ever "file" / "search-list" / "non-file" / "unknown" — the
+    // reserved protocol deliberately carries no raw tool names. Matching
+    // "edit"/"write"/"patch" against that title can never succeed.
+    //
+    // That same closed schema means read and write are indistinguishable:
+    // `ToolFamily::File` covers both, and `ToolOutcome` is only
+    // success/error/unknown. So this cannot honestly claim changes were
+    // made — only that the session touched files and then ended without a
+    // normal Stop, which is worth telling the receiver either way.
     if let Some(tool) = last_tool {
-        let title = tool.title.as_str();
-        let unverified =
-            (title.contains("edit") || title.contains("write") || title.contains("patch"))
-                && last_stop.is_none();
-        if unverified {
+        let touched_files = tool.title == canonical_tool_name(ToolFamily::File);
+        if touched_files && last_stop.is_none() {
             return vec![
-                "Changes were made but the session ended before verification".into(),
-                "Run tests or lint to confirm the changes are correct".into(),
+                "Session ended without a normal stop while working with files".into(),
+                "Check the working tree for uncommitted or unverified changes".into(),
             ];
         }
     }
@@ -11780,18 +11790,62 @@ mod tests {
         assert!(q[0].contains("return type"));
     }
 
+    /// The fixture title must come from `canonical_tool_name`, the same
+    /// function the ingest path uses. An earlier version of this test passed
+    /// a literal `"edit"`, which production never emits — so the heuristic
+    /// was dead code while the test stayed green.
     #[test]
-    fn open_questions_detects_unverified_edit() {
+    fn open_questions_detects_abnormal_exit_after_file_activity() {
         let obs = vec![
             mk_obs(ObservationKind::UserPrompt, "fix bug", "fix the bug"),
-            mk_obs(ObservationKind::PostToolUse, "edit", "edited main.rs"),
+            mk_obs(
+                ObservationKind::PostToolUse,
+                canonical_tool_name(ToolFamily::File),
+                "tool_family: file\noutcome: unknown",
+            ),
             // No Stop observation — session ended mid-task.
         ];
         let last = Some("fix the bug".to_string());
         let q = derive_open_questions(&obs, &last);
-        assert_eq!(q.len(), 2);
-        assert!(q[0].contains("ended before verification"));
-        assert!(q[1].contains("Run tests"));
+        assert_eq!(q.len(), 2, "got: {q:?}");
+        assert!(q[0].contains("without a normal stop"), "got: {q:?}");
+        assert!(q[1].contains("working tree"), "got: {q:?}");
+    }
+
+    /// Guard against the regression this heuristic already had once: only
+    /// titles the ingest path can actually produce may drive it, so a raw
+    /// tool name must NOT trigger the file branch.
+    #[test]
+    fn open_questions_ignores_raw_tool_names_production_never_emits() {
+        for bogus in ["edit", "write", "patch", "Edit"] {
+            let obs = vec![
+                mk_obs(ObservationKind::UserPrompt, "fix bug", "fix the bug"),
+                mk_obs(ObservationKind::PostToolUse, bogus, "edited main.rs"),
+            ];
+            let q = derive_open_questions(&obs, &Some("fix the bug".to_string()));
+            assert!(
+                q.iter().all(|s| !s.contains("without a normal stop")),
+                "title {bogus:?} is not a canonical tool family and must not \
+                 drive the file heuristic; got: {q:?}"
+            );
+        }
+    }
+
+    /// A search/list tool is file-adjacent but not file activity; it must
+    /// fall through to the prompt-based heuristics.
+    #[test]
+    fn open_questions_search_tool_does_not_trigger_file_branch() {
+        let obs = vec![
+            mk_obs(ObservationKind::UserPrompt, "find it", "find the caller"),
+            mk_obs(
+                ObservationKind::PostToolUse,
+                canonical_tool_name(ToolFamily::SearchList),
+                "tool_family: search-list\noutcome: success",
+            ),
+        ];
+        let q = derive_open_questions(&obs, &Some("find the caller".to_string()));
+        assert_eq!(q.len(), 1, "got: {q:?}");
+        assert!(q[0].starts_with("Continue from:"), "got: {q:?}");
     }
 
     #[test]
