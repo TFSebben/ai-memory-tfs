@@ -56,6 +56,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so the receiver knows the previous session did not finish cleanly. (#425)
 
 ### Fixed
+- The lint `stale` threshold is now derived from the operator's `[decay]
+  lambda` instead of a hard-coded 30 days (#426). The rule only fires on
+  episodic pages with zero accesses, and for those the decay score reduces
+  exactly to `salience * exp(-lambda * age)` — the reinforcement term carries
+  `ln(1 + access_count)`, which is zero — so the lint was already measuring
+  decay, just against a constant rather than against `lambda`. Slowing decay
+  made the two diverge: at `lambda = 0.008` real eviction lands near day 201
+  while the lint still called a page stale on day 31, and because a report
+  page is written whenever any finding exists, one page nobody intended to
+  read produced a new `_lint/<date>.md` every day, forever. The threshold is
+  now `0.6 / lambda`, which is **exactly 30 days at the default
+  `lambda = 0.02`** — unchanged for anyone who never tuned decay — and 75
+  days at `0.008`. An invalid or non-positive lambda falls back to the
+  historical constant rather than silencing the rule.
 - `bin/deploy` now refuses to push a single-architecture build over a tag that
   already resolves to a multi-architecture manifest (#427). It builds for the
   architecture of the machine it runs on, so deploying a homelab from an x86
