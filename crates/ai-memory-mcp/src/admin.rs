@@ -2714,8 +2714,11 @@ async fn handle_lint(
         state.llm.as_ref(),
         ws,
         proj,
-        req.dry_run,
-        !req.no_llm,
+        ai_memory_consolidate::LintOptions {
+            dry_run: req.dry_run,
+            use_llm: !req.no_llm,
+            decay_lambda: state.decay_params.lambda,
+        },
     )
     .await
     .map(|report| {
