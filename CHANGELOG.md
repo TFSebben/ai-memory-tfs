@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- New `llm_timeout_secs` config key (env `AI_MEMORY_LLM_TIMEOUT_SECS`, or
+  `llm_timeout_secs = 900` in config.toml) overrides the per-request timeout
+  every chat provider applies to its HTTP calls — previously hardcoded at
+  300s per provider. Slow hosted gateways (observed with free aggregator
+  tiers whose long completions exceed five minutes) failed every request with
+  `http: error sending request` once generation crossed the ceiling, so LLM
+  consolidation exhausted its retries and left heuristic pages behind; now
+  operators raise the bound at startup instead. The Copilot token exchange
+  is bounded by the same value, and the 300s default is unchanged ([#435]).
 - New `strip_root_combinators` config flag (env `AI_MEMORY_STRIP_ROOT_COMBINATORS`,
   or `strip_root_combinators = true` in config.toml) strips root-level
   `anyOf`/`oneOf`/`allOf` from MCP tool input schemas on every `tools/list`.
