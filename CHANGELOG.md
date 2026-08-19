@@ -55,6 +55,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged ([#412]). The key is documented in the generated
   `config.default.toml` so it is discoverable without reading the source.
 
+### Improved
+- The `open_questions` field in automatic SessionEnd handoffs now uses
+  multi-signal heuristics instead of blindly copying the last user prompt.
+  Trailing acknowledgments ("ok", "thanks", "好的") are filtered; a
+  question-mark-terminated final prompt is tagged as an unresolved question;
+  file-tool activity without a subsequent Stop produces an advisory to check
+  the working tree; and a mid-task exit (Stop without SessionEnd) is flagged
+  so the receiver knows the previous session did not finish cleanly. (#425)
+
 ### Fixed
 - `install-hooks --agent pi`, `--agent omp`, and `uninstall` now honor
   `PI_CODING_AGENT_DIR`, instead of always writing to `~/.pi/agent/extensions/`
