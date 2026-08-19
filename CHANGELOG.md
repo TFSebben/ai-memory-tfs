@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added a `flake.nix` so NixOS and Nix users can build and run ai-memory
+  without the Rust toolchain or Docker: `nix build`, `nix run . --
+  --version`, or `nix develop` for a dev shell. The build is self-contained
+  (SQLite bundled, libgit2 vendored, rustls with webpki-roots — no OpenSSL,
+  no system-library hunting). The flake skips the packaging test suite
+  because those tests exercise the Docker-wrapper shell script and need
+  `docker`/`podman` on PATH; the rest of the workspace tests can be run via
+  `nix develop -c cargo test --workspace`. Flake inputs are pinned to
+  explicit revisions rather than floating branches, so the build is
+  reproducible, and a `nix` CI job builds the flake and runs the resulting
+  binary whenever a Nix build input changes plus weekly, so the packaging
+  cannot rot unnoticed. ([#405])
+- New `strip_root_combinators` config flag (env `AI_MEMORY_STRIP_ROOT_COMBINATORS`,
+  or `strip_root_combinators = true` in config.toml) strips root-level
+  `anyOf`/`oneOf`/`allOf` from MCP tool input schemas on every `tools/list`.
+  Generic MCP clients such as OpenCode and Cursor never send the `?flavor=`
+  marker, yet forward schemas verbatim to strict upstreams (Moonshot, Bedrock)
+  that reject root combinators with a 400 — this gives operators behind such an
+  upstream a mode-independent opt-in. Runtime "exactly one of" validation is
+  unchanged ([#412]). The key is documented in the generated
+  `config.default.toml` so it is discoverable without reading the source.
+
+### Changed
+- Changed the default model for the `gemini` provider from `gemini-2.5-flash`
+  to `gemini-3.5-flash`. Google has scheduled the 2.5 Flash family for
+  retirement — the Gemini API deprecation table lists `gemini-2.5-flash-lite`
+  for **October 16, 2026** (Vertex AI and the Agent Platform list October 20;
+  ai-memory talks to the Gemini API, so the earlier date is the one that
+  applies). The thinking-budget workaround still covers the legacy models.
+  Note it is deliberately **not** applied to `gemini-3.5-flash-lite`, which
+  rejects `thinkingConfig` outright with HTTP 400 — unlike
+  `gemini-2.5-flash-lite`, which accepts it — so that model omits the field
+  and the e2e smoke test keeps `gemini-2.5-flash-lite` as its second
+  variant. (#423)
+- Documented OrcaRouter through the existing `openai-compat` provider instead
+  of adding a redundant provider type, including the endpoint, model, and API
+  key mapping needed for deployment. (#410)
+
+### Improved
+- The `open_questions` field in automatic SessionEnd handoffs now uses
+  multi-signal heuristics instead of blindly copying the last user prompt.
+  Trailing acknowledgments ("ok", "thanks", "好的") are filtered; a
+  question-mark-terminated final prompt is tagged as an unresolved question;
+  file-tool activity without a subsequent Stop produces an advisory to check
+  the working tree; and a mid-task exit (Stop without SessionEnd) is flagged
+  so the receiver knows the previous session did not finish cleanly. (#425)
+
 ### Fixed
 - The lint `stale` threshold is now derived from the operator's `[decay]
   lambda` instead of a hard-coded 30 days (#426). The rule only fires on
@@ -31,40 +79,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `bin/deploy.env.example` also defaulted `IMAGE` to `:latest`, so following
   the documented setup led straight into it; it now defaults to a private
   `:homelab` tag and explains that release tags are published by CI only.
-
-### Added
-- Added a `flake.nix` so NixOS and Nix users can build and run ai-memory
-  without the Rust toolchain or Docker: `nix build`, `nix run . --
-  --version`, or `nix develop` for a dev shell. The build is self-contained
-  (SQLite bundled, libgit2 vendored, rustls with webpki-roots — no OpenSSL,
-  no system-library hunting). The flake skips the packaging test suite
-  because those tests exercise the Docker-wrapper shell script and need
-  `docker`/`podman` on PATH; the rest of the workspace tests can be run via
-  `nix develop -c cargo test --workspace`. Flake inputs are pinned to
-  explicit revisions rather than floating branches, so the build is
-  reproducible, and a `nix` CI job builds the flake and runs the resulting
-  binary whenever a Nix build input changes plus weekly, so the packaging
-  cannot rot unnoticed. ([#405])
-- New `strip_root_combinators` config flag (env `AI_MEMORY_STRIP_ROOT_COMBINATORS`,
-  or `strip_root_combinators = true` in config.toml) strips root-level
-  `anyOf`/`oneOf`/`allOf` from MCP tool input schemas on every `tools/list`.
-  Generic MCP clients such as OpenCode and Cursor never send the `?flavor=`
-  marker, yet forward schemas verbatim to strict upstreams (Moonshot, Bedrock)
-  that reject root combinators with a 400 — this gives operators behind such an
-  upstream a mode-independent opt-in. Runtime "exactly one of" validation is
-  unchanged ([#412]). The key is documented in the generated
-  `config.default.toml` so it is discoverable without reading the source.
-
-### Improved
-- The `open_questions` field in automatic SessionEnd handoffs now uses
-  multi-signal heuristics instead of blindly copying the last user prompt.
-  Trailing acknowledgments ("ok", "thanks", "好的") are filtered; a
-  question-mark-terminated final prompt is tagged as an unresolved question;
-  file-tool activity without a subsequent Stop produces an advisory to check
-  the working tree; and a mid-task exit (Stop without SessionEnd) is flagged
-  so the receiver knows the previous session did not finish cleanly. (#425)
-
-### Fixed
 - `install-hooks` now writes agent-distinct extension filenames
   (`ai-memory-pi.ts`, `ai-memory-omp.ts`) instead of both agents sharing
   `ai-memory.ts`, so a Pi install and an OMP install no longer overwrite each
@@ -92,22 +106,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PI_CODING_AGENT_DIR` set are unaffected. The manual (non-`--apply`)
   instructions now name the resolved path too, instead of always printing the
   `~/.pi/agent` / `~/.omp/agent` default. (#411)
-
-### Changed
-- Changed the default model for the `gemini` provider from `gemini-2.5-flash`
-  to `gemini-3.5-flash`. Google has scheduled the 2.5 Flash family for
-  retirement — the Gemini API deprecation table lists `gemini-2.5-flash-lite`
-  for **October 16, 2026** (Vertex AI and the Agent Platform list October 20;
-  ai-memory talks to the Gemini API, so the earlier date is the one that
-  applies). The thinking-budget workaround still covers the legacy models.
-  Note it is deliberately **not** applied to `gemini-3.5-flash-lite`, which
-  rejects `thinkingConfig` outright with HTTP 400 — unlike
-  `gemini-2.5-flash-lite`, which accepts it — so that model omits the field
-  and the e2e smoke test keeps `gemini-2.5-flash-lite` as its second
-  variant. (#423)
-- Documented OrcaRouter through the existing `openai-compat` provider instead
-  of adding a redundant provider type, including the endpoint, model, and API
-  key mapping needed for deployment. (#410)
 
 ## [1.28.1] - 2026-08-18
 
