@@ -22,11 +22,22 @@
 {
   description = "Long-term memory for AI coding agents";
 
+  # Inputs are pinned to explicit revisions rather than floating branches.
+  #
+  # A flake's value is reproducibility, and `github:NixOS/nixpkgs/nixos-unstable`
+  # resolves to whatever that branch points at today, so two people — or the
+  # same person a week apart — can get different builds from identical source.
+  # Normally `flake.lock` handles this; pinning here achieves the same
+  # determinism and keeps the tree honest for contributors who do not have
+  # Nix installed and so cannot regenerate a lock.
+  #
+  # To update: bump these revisions deliberately, in their own commit, and
+  # let the `nix` CI job prove the result still builds.
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    flake-utils.url = "github:numtide/flake-utils";
+    nixpkgs.url = "github:NixOS/nixpkgs/0ae2bc1419c3f345984c2629e72e7a631820fa4d";
+    flake-utils.url = "github:numtide/flake-utils/11707dc2f618dd54ca8739b309ec4fc024de578b";
     rust-overlay = {
-      url = "github:oxalica/rust-overlay";
+      url = "github:oxalica/rust-overlay/99607a06c2ea1290cd3258c11d1416dde9201f94";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
