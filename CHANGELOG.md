@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   consolidation exhausted its retries and left heuristic pages behind; now
   operators raise the bound at startup instead. The Copilot token exchange
   is bounded by the same value, and the 300s default is unchanged ([#435]).
+- Added a `flake.nix` so NixOS and Nix users can build and run ai-memory
+  without the Rust toolchain or Docker: `nix build`, `nix run . --
+  --version`, or `nix develop` for a dev shell. The build is self-contained
+  (SQLite bundled, libgit2 vendored, rustls with webpki-roots — no OpenSSL,
+  no system-library hunting). The flake skips the packaging test suite
+  because those tests exercise the Docker-wrapper shell script and need
+  `docker`/`podman` on PATH; the rest of the workspace tests can be run via
+  `nix develop -c cargo test --workspace`. Flake inputs are pinned to
+  explicit revisions rather than floating branches, so the build is
+  reproducible, and a `nix` CI job builds the flake and runs the resulting
+  binary whenever a Nix build input changes plus weekly, so the packaging
+  cannot rot unnoticed. ([#405])
 - New `strip_root_combinators` config flag (env `AI_MEMORY_STRIP_ROOT_COMBINATORS`,
   or `strip_root_combinators = true` in config.toml) strips root-level
   `anyOf`/`oneOf`/`allOf` from MCP tool input schemas on every `tools/list`.
@@ -27,7 +39,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged ([#412]). The key is documented in the generated
   `config.default.toml` so it is discoverable without reading the source.
 
+### Changed
+- Changed the default model for the `gemini` provider from `gemini-2.5-flash`
+  to `gemini-3.5-flash`. Google has scheduled the 2.5 Flash family for
+  retirement — the Gemini API deprecation table lists `gemini-2.5-flash-lite`
+  for **October 16, 2026** (Vertex AI and the Agent Platform list October 20;
+  ai-memory talks to the Gemini API, so the earlier date is the one that
+  applies). The thinking-budget workaround still covers the legacy models.
+  Note it is deliberately **not** applied to `gemini-3.5-flash-lite`, which
+  rejects `thinkingConfig` outright with HTTP 400 — unlike
+  `gemini-2.5-flash-lite`, which accepts it — so that model omits the field
+  and the e2e smoke test keeps `gemini-2.5-flash-lite` as its second
+  variant. (#423)
+- Documented OrcaRouter through the existing `openai-compat` provider instead
+  of adding a redundant provider type, including the endpoint, model, and API
+  key mapping needed for deployment. (#410)
+
+### Improved
+- The `open_questions` field in automatic SessionEnd handoffs now uses
+  multi-signal heuristics instead of blindly copying the last user prompt.
+  Trailing acknowledgments ("ok", "thanks", "好的") are filtered; a
+  question-mark-terminated final prompt is tagged as an unresolved question;
+  file-tool activity without a subsequent Stop produces an advisory to check
+  the working tree; and a mid-task exit (Stop without SessionEnd) is flagged
+  so the receiver knows the previous session did not finish cleanly. (#425)
+
 ### Fixed
+- The lint `stale` threshold is now derived from the operator's `[decay]
+  lambda` instead of a hard-coded 30 days (#426). The rule only fires on
+  episodic pages with zero accesses, and for those the decay score reduces
+  exactly to `salience * exp(-lambda * age)` — the reinforcement term carries
+  `ln(1 + access_count)`, which is zero — so the lint was already measuring
+  decay, just against a constant rather than against `lambda`. Slowing decay
+  made the two diverge: at `lambda = 0.008` real eviction lands near day 201
+  while the lint still called a page stale on day 31, and because a report
+  page is written whenever any finding exists, one page nobody intended to
+  read produced a new `_lint/<date>.md` every day, forever. The threshold is
+  now `0.6 / lambda`, which is **exactly 30 days at the default
+  `lambda = 0.02`** — unchanged for anyone who never tuned decay — and 75
+  days at `0.008`. An invalid or non-positive lambda falls back to the
+  historical constant rather than silencing the rule.
+- `bin/deploy` now refuses to push a single-architecture build over a tag that
+  already resolves to a multi-architecture manifest (#427). It builds for the
+  architecture of the machine it runs on, so deploying a homelab from an x86
+  workstation to `IMAGE=akitaonrails/ai-memory:latest` replaced the
+  amd64+arm64 manifest CI had published with an amd64-only image, and every
+  arm64 host pulling `:latest` failed with `exec format error`. The shipped
+  `bin/deploy.env.example` also defaulted `IMAGE` to `:latest`, so following
+  the documented setup led straight into it; it now defaults to a private
+  `:homelab` tag and explains that release tags are published by CI only.
+- `install-hooks` now writes agent-distinct extension filenames
+  (`ai-memory-pi.ts`, `ai-memory-omp.ts`) instead of both agents sharing
+  `ai-memory.ts`, so a Pi install and an OMP install no longer overwrite each
+  other when `PI_CODING_AGENT_DIR` points them at one home. A superseded
+  `ai-memory.ts` is removed only when it carries this tool's generated marker
+  *for that same agent* — a file you wrote yourself, or the other agent's, is
+  left alone and reported. OMP profiles are supported via `--profile` or
+  `OMP_PROFILE`; `PI_CODING_AGENT_DIR` takes precedence over a profile, since
+  it names the agent directory outright.
+
+  Note distinct filenames stop the overwrite but do **not** make a shared
+  directory safe: each agent loads every `*.ts` it finds there, so installing
+  both into one home captures every event twice, once per agent identity.
+  That collision is upstream — both agents read the same environment
+  variable — so `install-hooks` now warns when it detects one and points at
+  the two ways out. (#421)
 - `install-hooks --agent pi`, `--agent omp`, and `uninstall` now honor
   `PI_CODING_AGENT_DIR`, instead of always writing to `~/.pi/agent/extensions/`
   and `~/.omp/agent/extensions/`. Both agents relocate their whole agent
@@ -39,11 +115,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PI_CODING_AGENT_DIR` set are unaffected. The manual (non-`--apply`)
   instructions now name the resolved path too, instead of always printing the
   `~/.pi/agent` / `~/.omp/agent` default. (#411)
-
-### Changed
-- Documented OrcaRouter through the existing `openai-compat` provider instead
-  of adding a redundant provider type, including the endpoint, model, and API
-  key mapping needed for deployment. (#410)
 
 ## [1.28.1] - 2026-08-18
 
