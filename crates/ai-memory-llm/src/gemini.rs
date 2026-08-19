@@ -30,6 +30,7 @@ pub struct GeminiProvider {
     api_key: SecretString,
     base_url: String,
     model: String,
+    timeout: Duration,
 }
 
 impl GeminiProvider {
@@ -39,14 +40,13 @@ impl GeminiProvider {
     /// # Errors
     /// Returns a `reqwest::Error` if the HTTP client cannot be built.
     pub fn new(api_key: SecretString, model: impl Into<String>) -> LlmResult<Self> {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(300))
-            .build()?;
+        let client = reqwest::Client::builder().build()?;
         Ok(Self {
             client,
             api_key,
             base_url: DEFAULT_BASE_URL.to_string(),
             model: model.into(),
+            timeout: Duration::from_secs(crate::DEFAULT_REQUEST_TIMEOUT_SECS),
         })
     }
 
@@ -54,6 +54,14 @@ impl GeminiProvider {
     #[must_use]
     pub fn with_base_url(mut self, url: impl Into<String>) -> Self {
         self.base_url = url.into();
+        self
+    }
+
+    /// Override the per-request timeout (default
+    /// [`crate::DEFAULT_REQUEST_TIMEOUT_SECS`]).
+    #[must_use]
+    pub fn with_timeout_secs(mut self, secs: u64) -> Self {
+        self.timeout = Duration::from_secs(secs);
         self
     }
 }
@@ -228,6 +236,7 @@ impl GeminiProvider {
         let resp = self
             .client
             .post(&url)
+            .timeout(self.timeout)
             .header("x-goog-api-key", self.api_key.expose_secret())
             .header("content-type", "application/json")
             .json(body)

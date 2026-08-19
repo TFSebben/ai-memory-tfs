@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- New `llm_timeout_secs` config key (env `AI_MEMORY_LLM_TIMEOUT_SECS`, or
+  `llm_timeout_secs = 900` in config.toml) overrides the per-request timeout
+  every chat provider applies to its HTTP calls — previously hardcoded at
+  300s per provider. Slow hosted gateways (observed with free aggregator
+  tiers whose long completions exceed five minutes) failed every request with
+  `http: error sending request` once generation crossed the ceiling, so LLM
+  consolidation exhausted its retries and left heuristic pages behind; now
+  operators raise the bound at startup instead. The Copilot token exchange
+  is bounded by the same value, and the 300s default is unchanged ([#435]).
 - Added a `flake.nix` so NixOS and Nix users can build and run ai-memory
   without the Rust toolchain or Docker: `nix build`, `nix run . --
   --version`, or `nix develop` for a dev shell. The build is self-contained

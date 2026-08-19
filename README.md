@@ -966,6 +966,14 @@ automatic PreCompact/PostCompaction checkpoint fall back to the deterministic
 rule-based page; admission, storage, and scope errors still fail closed. The
 validated minimums are 6,000 input and 1,000 output tokens.
 
+Every chat provider bounds each completion request at 300 seconds
+(`AI_MEMORY_LLM_TIMEOUT_SECS` to override, or `llm_timeout_secs = 900` in
+config.toml; the quick openai-oauth token refresh keeps the default ceiling).
+The default tolerates a local engine cold-loading a large model; slow hosted
+gateways whose long completions exceed the ceiling fail every request with
+`http: error sending request`, so raise the value there instead of watching
+consolidation exhaust its retries.
+
 Reranking is optional and off by default. With an LLM provider configured,
 `AI_MEMORY_RERANKER=llm` makes project and explicit-scope `memory_query`
 calls over-fetch from the hybrid stage, fuse scopes, and make at most one LLM

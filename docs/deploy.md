@@ -180,6 +180,12 @@ tolerant fallback for explicit capability rejection or malformed output. Set
 `AI_MEMORY_LLM_COMPAT_STRICT=false` for an incompatible endpoint. If you switch
 to a niche local model, run a quick `ai-memory llm-test` before trusting it.
 
+Every chat provider bounds each HTTP request at 300 seconds. Slow hosted
+gateways (observed with free aggregator tiers) can stream a long completion
+past that ceiling and fail every request with `http: error sending request`;
+raise `AI_MEMORY_LLM_TIMEOUT_SECS` in the container environment to match the
+gateway's worst-case generation time.
+
 ## Backups
 
 The data dir is whatever you mounted in `docker-compose.prod.yml`
