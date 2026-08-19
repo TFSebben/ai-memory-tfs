@@ -247,7 +247,21 @@ impl GeminiProvider {
 
 fn default_thinking_config_for(model: &str) -> Option<GeminiThinkingConfig> {
     let model = model.to_ascii_lowercase();
-    if model.contains("gemini-2.5-flash") || model.contains("gemini-3.5-flash") {
+    // These matches are substring matches, so `gemini-N.5-flash` also covers
+    // `gemini-N.5-flash-lite`. That is correct for 2.5 and WRONG for 3.5:
+    // verified against the live API, `gemini-2.5-flash-lite` accepts
+    // `thinkingConfig.thinkingBudget = 0` (HTTP 200) while
+    // `gemini-3.5-flash-lite` rejects the field outright (HTTP 400,
+    // "Request contains an invalid argument") and succeeds only when it is
+    // omitted. Sending it there breaks every call for that model.
+    //
+    // So 3.5 excludes `-lite` explicitly and 2.5 keeps its existing
+    // behaviour unchanged — narrowing 2.5 as well would re-enable its
+    // default thinking and let hidden thought tokens truncate strict JSON,
+    // which is the whole reason this function exists.
+    let is_25_flash = model.contains("gemini-2.5-flash");
+    let is_35_flash_non_lite = model.contains("gemini-3.5-flash") && !model.contains("-lite");
+    if is_25_flash || is_35_flash_non_lite {
         return Some(GeminiThinkingConfig { thinking_budget: 0 });
     }
     None
@@ -603,6 +617,26 @@ mod tests {
     #[test]
     fn build_request_disables_default_thinking_for_35_flash() {
         assert_thinking_budget_disabled("gemini-3.5-flash");
+    }
+
+    /// `gemini-3.5-flash-lite` rejects `thinkingConfig` with HTTP 400 while
+    /// `gemini-2.5-flash-lite` accepts it — verified against the live API.
+    /// The substring match must therefore split the two, or every call on
+    /// 3.5-lite fails.
+    #[test]
+    fn build_request_omits_thinking_config_for_35_flash_lite_only() {
+        let lite =
+            GeminiProvider::new(SecretString::from("test-key"), "gemini-3.5-flash-lite").unwrap();
+        let body =
+            serde_json::to_value(lite.build_request(&ChatRequest::user_prompt("x"), None)).unwrap();
+        assert!(
+            body["generationConfig"].get("thinkingConfig").is_none(),
+            "3.5-flash-lite rejects thinkingConfig (HTTP 400); it must be omitted: {body}"
+        );
+
+        // 2.5-flash-lite accepts it, and stripping it there would let hidden
+        // thought tokens truncate strict JSON. Behaviour must not change.
+        assert_thinking_budget_disabled("gemini-2.5-flash-lite");
     }
 
     #[test]

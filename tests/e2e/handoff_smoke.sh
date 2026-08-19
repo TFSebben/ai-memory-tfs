@@ -88,8 +88,12 @@ HOOK_SCOPE="workspace=e2e-test&project=blog"
 
 # Two deliberately different Gemini variants. Both are free-tier;
 # overridable via env when the defaults rotate out.
+# NOTE: `gemini_call` below always sends thinkingConfig.thinkingBudget=0.
+# `gemini-3.5-flash-lite` REJECTS that field (HTTP 400) — verified against
+# the live API — so it cannot be used here. `gemini-2.5-flash-lite` accepts
+# it and stays the second variant.
 MODEL_A="${MODEL_A:-gemini-3.5-flash}"
-MODEL_B="${MODEL_B:-gemini-3.5-flash-lite}"
+MODEL_B="${MODEL_B:-gemini-2.5-flash-lite}"
 
 # Isolate ai-memory's data dir; leave $HOME alone so cargo's target
 # cache + the user's git config etc. stay accessible.
