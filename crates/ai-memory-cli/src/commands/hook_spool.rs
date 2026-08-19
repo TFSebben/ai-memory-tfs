@@ -124,25 +124,44 @@ pub struct SpoolHealth {
 /// command, never on the hook hot path).
 #[must_use]
 pub fn spool_health(spool: &Path) -> SpoolHealth {
-    let Some(mut files) = list_entries(spool) else {
+    let Some(files) = list_entries(spool) else {
         return SpoolHealth::default();
     };
     if files.is_empty() {
         return SpoolHealth::default();
     }
+    // Keep only files whose *names* follow the spool convention. A stray
+    // `.json` that this queue did not write is not a pending hook event, and
+    // letting one drive the age is actively misleading: an unparseable name
+    // reads as `created_ms = 0`, so the oldest age becomes the whole Unix
+    // epoch — roughly 56 years of phantom backlog on a status screen whose
+    // entire job is telling an operator whether capture is keeping up.
+    //
+    // Not hypothetical on macOS: writing to a filesystem without extended
+    // attributes (FAT, SMB, some NFS) leaves AppleDouble sidecars named
+    // `._<original>`, which end in `.json` and sort before any digit.
+    let mut files: Vec<(u64, PathBuf)> = files
+        .into_iter()
+        .filter_map(|path| {
+            let created = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .and_then(created_ms_from_name)?;
+            Some((created, path))
+        })
+        .collect();
+    if files.is_empty() {
+        return SpoolHealth::default();
+    }
     files.sort();
     let now = now_ms();
-    let oldest_created = files[0]
-        .file_name()
-        .and_then(|name| name.to_str())
-        .map(created_ms_from_name)
-        .unwrap_or(0);
+    let oldest_created = files[0].0;
     let mut health = SpoolHealth {
         pending: files.len(),
         oldest_age_ms: Some(now.saturating_sub(oldest_created)),
         retries_total: 0,
     };
-    for path in &files {
+    for (_, path) in &files {
         if let Ok(bytes) = std::fs::read(path)
             && let Ok(entry) = serde_json::from_slice::<SpoolEntry>(&bytes)
         {
@@ -153,16 +172,25 @@ pub fn spool_health(spool: &Path) -> SpoolHealth {
 }
 
 /// Extract the enqueue timestamp embedded in a spool file name
-/// (`{created_ms:013}-{pid}-{seq:016x}.json`), 0 when unparseable. Filenames
-/// are the only place `created_ms` is readable without opening the file, so
-/// oldest-age reporting never pays a read per queued event.
-fn created_ms_from_name(file_name: &str) -> u64 {
-    file_name
-        .split('-')
-        .next()
-        .unwrap_or(file_name)
-        .parse()
-        .unwrap_or(0)
+/// (`{created_ms:013}-{pid}-{seq:016x}.json`), `None` when the name does not
+/// follow that convention. Filenames are the only place `created_ms` is
+/// readable without opening the file, so oldest-age reporting never pays a
+/// read per queued event.
+///
+/// Returns `None` rather than `0` so a foreign file cannot be mistaken for an
+/// entry enqueued at the Unix epoch — see [`spool_health`].
+fn created_ms_from_name(file_name: &str) -> Option<u64> {
+    let (stamp, rest) = file_name.split_once('-')?;
+    // Require the full zero-padded width the writer emits, so a name that
+    // merely *starts* with digits is not accepted.
+    if stamp.len() != 13 || !stamp.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    // And require the remainder to look like `{pid}-{seq}.json`.
+    if !rest.ends_with(".json") || !rest.contains('-') {
+        return None;
+    }
+    stamp.parse().ok()
 }
 
 fn now_ms() -> u64 {
@@ -2199,8 +2227,51 @@ mod tests {
     fn created_ms_from_name_handles_malformed_names() {
         assert_eq!(
             created_ms_from_name("0000000000042-1-0000000000000001.json"),
-            42
+            Some(42)
         );
-        assert_eq!(created_ms_from_name("garbage.json"), 0);
+        assert_eq!(created_ms_from_name("garbage.json"), None);
+        // A macOS AppleDouble sidecar: ends in `.json`, sorts before any
+        // digit, and must never be read as an epoch-0 entry.
+        assert_eq!(created_ms_from_name("._0000000000042-1-0002.json"), None);
+        // Digits alone are not enough — the writer zero-pads to 13.
+        assert_eq!(created_ms_from_name("42-1-0002.json"), None);
+        assert_eq!(created_ms_from_name("0000000000042-1-0002.txt"), None);
+    }
+
+    /// Regression: a foreign `.json` in the spool directory must not be
+    /// counted as a pending event, and must never drive the oldest age.
+    /// Before this guard an AppleDouble sidecar parsed as `created_ms = 0`
+    /// and reported roughly 56 years of backlog that did not exist.
+    #[test]
+    fn spool_health_ignores_files_this_queue_did_not_write() {
+        let tmp = tempfile::tempdir().unwrap();
+        let spool = spool_dir(tmp.path());
+        std::fs::create_dir_all(&spool).unwrap();
+
+        let mut real = entry_for("https://x/hook".into(), "{}".into(), None, false);
+        real.created_ms = now_ms().saturating_sub(1_000);
+        enqueue(&spool, &real).unwrap();
+
+        // Sorts before any digit and still ends in `.json`.
+        std::fs::write(spool.join("._sidecar.json"), b"\x00\x05").unwrap();
+        std::fs::write(spool.join("notes.json"), b"{}").unwrap();
+
+        let health = spool_health(&spool);
+        assert_eq!(health.pending, 1, "only the real entry is pending");
+        let age = health.oldest_age_ms.expect("one real entry");
+        assert!(
+            age < 60_000,
+            "age must come from the real entry (~1s), got {age}ms"
+        );
+    }
+
+    /// A directory holding only foreign files reports empty, not epoch-aged.
+    #[test]
+    fn spool_health_is_default_when_only_foreign_files_present() {
+        let tmp = tempfile::tempdir().unwrap();
+        let spool = spool_dir(tmp.path());
+        std::fs::create_dir_all(&spool).unwrap();
+        std::fs::write(spool.join("._only.json"), b"x").unwrap();
+        assert_eq!(spool_health(&spool), SpoolHealth::default());
     }
 }
