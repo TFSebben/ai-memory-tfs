@@ -528,6 +528,10 @@ pub struct UninstallArgs {
     /// Skip the interactive confirmation when a TTY is attached.
     #[arg(long)]
     pub yes: bool,
+    /// Profile to use for OMP extensions, which relocates the path to
+    /// `~/.omp/profiles/<profile>/agent/extensions/`.
+    #[arg(long)]
+    pub profile: Option<String>,
 }
 
 /// Arguments for `reorg`.
@@ -1625,6 +1629,10 @@ pub struct InstallHooksArgs {
     /// without this flag removes it (idempotent). Default off.
     #[arg(long)]
     pub capture_assistant: bool,
+    /// Profile to use for OMP extensions, which relocates the path to
+    /// `~/.omp/profiles/<profile>/agent/extensions/`.
+    #[arg(long)]
+    pub profile: Option<String>,
 }
 
 /// Arguments for `install-mcp`.
