@@ -1052,9 +1052,12 @@ async fn start_maintenance_scheduler(
                     let reader = reader.clone();
                     let wiki = wiki.clone();
                     let llm = llm.clone();
+                    let decay_lambda = decay.decay_params().lambda;
                     async move {
                         let started = std::time::Instant::now();
-                        let outcome = run_scheduled_lint_tick(&reader, &wiki, llm.as_ref()).await?;
+                        let outcome =
+                            run_scheduled_lint_tick(&reader, &wiki, llm.as_ref(), decay_lambda)
+                                .await?;
                         if outcome.errors > 0 {
                             anyhow::bail!(
                                 "scheduled rule-based lint had {} scope errors",
@@ -1246,6 +1249,7 @@ async fn run_scheduled_lint_tick(
     reader: &ReaderPool,
     wiki: &Wiki,
     llm: Option<&Arc<dyn LlmProvider>>,
+    decay_lambda: f64,
 ) -> Result<ScheduledLintTickOutcome> {
     let scopes = reader.list_all_scopes().await?;
     let mut outcome = ScheduledLintTickOutcome {
@@ -1260,8 +1264,11 @@ async fn run_scheduled_lint_tick(
             llm,
             scope.workspace_id,
             scope.project_id,
-            false,
-            false,
+            ai_memory_consolidate::LintOptions {
+                dry_run: false,
+                use_llm: false,
+                decay_lambda,
+            },
         )
         .await
         {
@@ -2553,9 +2560,14 @@ mod tests {
         }
 
         let panic_llm: Arc<dyn LlmProvider> = Arc::new(PanicLlm);
-        let outcome = run_scheduled_lint_tick(&store.reader, &wiki, Some(&panic_llm))
-            .await
-            .unwrap();
+        let outcome = run_scheduled_lint_tick(
+            &store.reader,
+            &wiki,
+            Some(&panic_llm),
+            ai_memory_store::DecayParams::default().lambda,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(outcome.scopes, 2);
         assert_eq!(outcome.errors, 0);

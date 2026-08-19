@@ -145,6 +145,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: scripts/check-native-packaging.sh
 
+  # `bin/release` copies `## [Unreleased]` into the new version section
+  # verbatim, so a repeated `### ` heading there ships release notes with the
+  # entries split across two identical headings. Valid Markdown, invisible in
+  # review, and it has happened repeatedly.
+  changelog:
+    name: changelog sections
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: scripts/check-changelog-sections.sh
+
   # End-to-end docker smoke: packages the release-build binary and confirms
   # the image runs. Catches Dockerfile drift (missing COPY, bad ENTRYPOINT)
   # before it lands in production without recompiling Rust in Docker.

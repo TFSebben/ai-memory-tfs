@@ -16,17 +16,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   spool is client-side, so the section reflects the local data-dir even when
   the server is remote. The JSON form gains a matching `spool` object
   (`pending`, `oldest_age_ms`, `retries_total`). (#428)
-- New `strip_root_combinators` config flag (env `AI_MEMORY_STRIP_ROOT_COMBINATORS`,
-  or `strip_root_combinators = true` in config.toml) strips root-level
-  `anyOf`/`oneOf`/`allOf` from MCP tool input schemas on every `tools/list`.
-  Generic MCP clients such as OpenCode and Cursor never send the `?flavor=`
-  marker, yet forward schemas verbatim to strict upstreams (Moonshot, Bedrock)
-  that reject root combinators with a 400 — this gives operators behind such an
-  upstream a mode-independent opt-in. Runtime "exactly one of" validation is
-  unchanged ([#412]). The key is documented in the generated
-  `config.default.toml` so it is discoverable without reading the source.
+
+## [1.29.0] - 2026-08-19
 
 ### Fixed
+- Corrected the Pi/OMP extension filenames in `README.md`, `docs/install.md`,
+  and `docs/mcp-install.md`, which still described the pre-rename
+  `ai-memory.ts` after the agent-distinct `ai-memory-pi.ts` /
+  `ai-memory-omp.ts` split. Following those instructions by hand created the
+  very duplicate-load the split exists to prevent, since each agent loads
+  every `*.ts` in its extensions directory. Documented `--profile` /
+  `OMP_PROFILE` and the `PI_CODING_AGENT_DIR` precedence alongside them.
+- The lint `stale` threshold is now derived from the operator's `[decay]
+  lambda` instead of a hard-coded 30 days (#426). The rule only fires on
+  episodic pages with zero accesses, and for those the decay score reduces
+  exactly to `salience * exp(-lambda * age)` — the reinforcement term carries
+  `ln(1 + access_count)`, which is zero — so the lint was already measuring
+  decay, just against a constant rather than against `lambda`. Slowing decay
+  made the two diverge: at `lambda = 0.008` real eviction lands near day 201
+  while the lint still called a page stale on day 31, and because a report
+  page is written whenever any finding exists, one page nobody intended to
+  read produced a new `_lint/<date>.md` every day, forever. The threshold is
+  now `0.6 / lambda`, which is **exactly 30 days at the default
+  `lambda = 0.02`** — unchanged for anyone who never tuned decay — and 75
+  days at `0.008`. An invalid or non-positive lambda falls back to the
+  historical constant rather than silencing the rule.
+- `bin/deploy` now refuses to push a single-architecture build over a tag that
+  already resolves to a multi-architecture manifest (#427). It builds for the
+  architecture of the machine it runs on, so deploying a homelab from an x86
+  workstation to `IMAGE=akitaonrails/ai-memory:latest` replaced the
+  amd64+arm64 manifest CI had published with an amd64-only image, and every
+  arm64 host pulling `:latest` failed with `exec format error`. The shipped
+  `bin/deploy.env.example` also defaulted `IMAGE` to `:latest`, so following
+  the documented setup led straight into it; it now defaults to a private
+  `:homelab` tag and explains that release tags are published by CI only.
+- `install-hooks` now writes agent-distinct extension filenames
+  (`ai-memory-pi.ts`, `ai-memory-omp.ts`) instead of both agents sharing
+  `ai-memory.ts`, so a Pi install and an OMP install no longer overwrite each
+  other when `PI_CODING_AGENT_DIR` points them at one home. A superseded
+  `ai-memory.ts` is removed only when it carries this tool's generated marker
+  *for that same agent* — a file you wrote yourself, or the other agent's, is
+  left alone and reported. OMP profiles are supported via `--profile` or
+  `OMP_PROFILE`; `PI_CODING_AGENT_DIR` takes precedence over a profile, since
+  it names the agent directory outright.
+
+  Note distinct filenames stop the overwrite but do **not** make a shared
+  directory safe: each agent loads every `*.ts` it finds there, so installing
+  both into one home captures every event twice, once per agent identity.
+  That collision is upstream — both agents read the same environment
+  variable — so `install-hooks` now warns when it detects one and points at
+  the two ways out. (#421)
 - `install-hooks --agent pi`, `--agent omp`, and `uninstall` now honor
   `PI_CODING_AGENT_DIR`, instead of always writing to `~/.pi/agent/extensions/`
   and `~/.omp/agent/extensions/`. Both agents relocate their whole agent
@@ -39,10 +78,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instructions now name the resolved path too, instead of always printing the
   `~/.pi/agent` / `~/.omp/agent` default. (#411)
 
+### Added
+- CI now rejects a CHANGELOG version section that repeats a `### ` heading
+  (`scripts/check-changelog-sections.sh`). `bin/release` copies
+  `[Unreleased]` into the new version verbatim, so a duplicated heading ships
+  release notes with the entries split across two identical headings — valid
+  Markdown, invisible in review. The same defect was found in four already
+  released sections (1.19.0, 1.13.0, 1.4.0, 1.1.1) and folded in the same
+  commit; no entry text was changed.
+- New `llm_timeout_secs` config key (env `AI_MEMORY_LLM_TIMEOUT_SECS`, or
+  `llm_timeout_secs = 900` in config.toml) overrides the per-request timeout
+  every chat provider applies to its HTTP calls — previously hardcoded at
+  300s per provider. Slow hosted gateways (observed with free aggregator
+  tiers whose long completions exceed five minutes) failed every request with
+  `http: error sending request` once generation crossed the ceiling, so LLM
+  consolidation exhausted its retries and left heuristic pages behind; now
+  operators raise the bound at startup instead. The Copilot token exchange
+  is bounded by the same value, and the 300s default is unchanged ([#435]).
+- Added a `flake.nix` so NixOS and Nix users can build and run ai-memory
+  without the Rust toolchain or Docker: `nix build`, `nix run . --
+  --version`, or `nix develop` for a dev shell. The build is self-contained
+  (SQLite bundled, libgit2 vendored, rustls with webpki-roots — no OpenSSL,
+  no system-library hunting). The flake skips the packaging test suite
+  because those tests exercise the Docker-wrapper shell script and need
+  `docker`/`podman` on PATH; the rest of the workspace tests can be run via
+  `nix develop -c cargo test --workspace`. Flake inputs are pinned to
+  explicit revisions rather than floating branches, so the build is
+  reproducible, and a `nix` CI job builds the flake and runs the resulting
+  binary whenever a Nix build input changes plus weekly, so the packaging
+  cannot rot unnoticed. ([#405])
+- New `strip_root_combinators` config flag (env `AI_MEMORY_STRIP_ROOT_COMBINATORS`,
+  or `strip_root_combinators = true` in config.toml) strips root-level
+  `anyOf`/`oneOf`/`allOf` from MCP tool input schemas on every `tools/list`.
+  Generic MCP clients such as OpenCode and Cursor never send the `?flavor=`
+  marker, yet forward schemas verbatim to strict upstreams (Moonshot, Bedrock)
+  that reject root combinators with a 400 — this gives operators behind such an
+  upstream a mode-independent opt-in. Runtime "exactly one of" validation is
+  unchanged ([#412]). The key is documented in the generated
+  `config.default.toml` so it is discoverable without reading the source.
+
 ### Changed
+- Changed the default model for the `gemini` provider from `gemini-2.5-flash`
+  to `gemini-3.5-flash`. Google has scheduled the 2.5 Flash family for
+  retirement — the Gemini API deprecation table lists `gemini-2.5-flash-lite`
+  for **October 16, 2026** (Vertex AI and the Agent Platform list October 20;
+  ai-memory talks to the Gemini API, so the earlier date is the one that
+  applies). The thinking-budget workaround still covers the legacy models.
+  Note it is deliberately **not** applied to `gemini-3.5-flash-lite`, which
+  rejects `thinkingConfig` outright with HTTP 400 — unlike
+  `gemini-2.5-flash-lite`, which accepts it — so that model omits the field
+  and the e2e smoke test keeps `gemini-2.5-flash-lite` as its second
+  variant. (#423)
 - Documented OrcaRouter through the existing `openai-compat` provider instead
   of adding a redundant provider type, including the endpoint, model, and API
   key mapping needed for deployment. (#410)
+
+### Improved
+- The `open_questions` field in automatic SessionEnd handoffs now uses
+  multi-signal heuristics instead of blindly copying the last user prompt.
+  Trailing acknowledgments ("ok", "thanks", "好的") are filtered; a
+  question-mark-terminated final prompt is tagged as an unresolved question;
+  file-tool activity without a subsequent Stop produces an advisory to check
+  the working tree; and a mid-task exit (Stop without SessionEnd) is flagged
+  so the receiver knows the previous session did not finish cleanly. (#425)
 
 ## [1.28.1] - 2026-08-18
 
@@ -997,55 +1095,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sentinel. Large Claude Code hook packets can be file-backed, so acceptance no
   longer passes or fails based on whether the model chooses to use `Read`.
   The deterministic fake Grok leg covers the same assertion path. (#242)
-
-### Added
-- `install-mcp --client claude-code --session-aware` now registers an
-  ai-memory-owned stdio bridge that forwards Claude Code's
-  `CLAUDE_CODE_SESSION_ID` as `X-Memory-Actor-Session-Id` on every upstream
-  HTTP MCP request. This makes `[auto_scope] mode = "per_session"` effective
-  for concurrent Claude Code sessions against local or remote servers while
-  leaving the existing static HTTP registration as the default. The bridge
-  preserves bearer auth, stateless/stateful HTTP compatibility, and uninstall
-  ownership; both Docker wrappers forward the Claude session variable into
-  the helper container. (#244)
-- `GET /admin/open-sessions` lists open (not yet ended) sessions for one
-  workspace/project/agent, newest first (`all=true` returns every match).
-  `ai-memory finalize-session` now uses this endpoint instead of opening
-  the local SQLite index directly, so every CLI command is a thin HTTP
-  client of the running server; the command now requires a reachable
-  server and no longer works against an offline data directory. (#236)
-- Managed workstream support for Grok Build CLI: `ai-memory run grok` (alias
-  `grok-build`) creates fresh sessions with a wrapper-generated `--session-id`,
-  resumes linked sessions with `--resume`, maps wrapper `--yolo` onto Grok's
-  native `--yolo`/`--always-approve`, and delivers the bounded workstream
-  context packet through Grok's native `--rules` flag (system-prompt append,
-  acknowledged only after the child spawns). Transcript import reads
-  `$GROK_HOME/sessions/*/*/chat_history.jsonl` read-only with a
-  prefix-validated cursor and content-hash event ids so rewind-driven journal
-  rewrites cannot duplicate history; system prompts and encrypted reasoning
-  are excluded as loss annotations, as are the harness-injected `<user_info>`
-  and `<system-reminder>` blocks Grok stores inside `user` records (project
-  instructions, the skills catalogue, and connected MCP servers), which would
-  otherwise leak harness internals into the portable ledger and evict real
-  conversation from the startup packet budget. Discovery
-  matches checkouts through `summary.json`'s recorded `info.cwd` and honors
-  `GROK_HOME`. Grok stays out of the bare-mode automatic pool. Verified
-  against Grok Build CLI v0.2.111 ([#237]).
-
-### Changed
-- Single-page, batch, and bootstrap consolidation prompts now ask the model
-  to connect related wiki pages with path-based wikilinks and to mirror the
-  dominant natural language of the source material while preserving code,
-  identifiers, paths, commands, error strings, and JSON field names. (#238)
-- The M8 access-counter reinforcement now bumps a page's `access_count` and
-  `last_accessed_at` at most once per minute instead of on every search that
-  returns it. A first sighting still bumps immediately, and a continuously hot
-  page remains eligible once per window, while the cooldown map self-prunes to
-  the pages searched within the window. This reduces redundant single-writer
-  work under bursty or overlapping searches while intentionally making
-  `access_count` a coarser retention signal. (#239)
-
-### Fixed
 - Managed workstream packets now carry a versioned origin marker, and Claude
   Code transcript import excludes a tool result only when its content begins
   with that marker (or the legacy rendered packet header). This prevents a
@@ -1094,6 +1143,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after the complete response has been assembled; a failed or racing
   ledger claim cannot consume the handoff or suppress retry delivery.
   (#235)
+
+### Added
+- `install-mcp --client claude-code --session-aware` now registers an
+  ai-memory-owned stdio bridge that forwards Claude Code's
+  `CLAUDE_CODE_SESSION_ID` as `X-Memory-Actor-Session-Id` on every upstream
+  HTTP MCP request. This makes `[auto_scope] mode = "per_session"` effective
+  for concurrent Claude Code sessions against local or remote servers while
+  leaving the existing static HTTP registration as the default. The bridge
+  preserves bearer auth, stateless/stateful HTTP compatibility, and uninstall
+  ownership; both Docker wrappers forward the Claude session variable into
+  the helper container. (#244)
+- `GET /admin/open-sessions` lists open (not yet ended) sessions for one
+  workspace/project/agent, newest first (`all=true` returns every match).
+  `ai-memory finalize-session` now uses this endpoint instead of opening
+  the local SQLite index directly, so every CLI command is a thin HTTP
+  client of the running server; the command now requires a reachable
+  server and no longer works against an offline data directory. (#236)
+- Managed workstream support for Grok Build CLI: `ai-memory run grok` (alias
+  `grok-build`) creates fresh sessions with a wrapper-generated `--session-id`,
+  resumes linked sessions with `--resume`, maps wrapper `--yolo` onto Grok's
+  native `--yolo`/`--always-approve`, and delivers the bounded workstream
+  context packet through Grok's native `--rules` flag (system-prompt append,
+  acknowledged only after the child spawns). Transcript import reads
+  `$GROK_HOME/sessions/*/*/chat_history.jsonl` read-only with a
+  prefix-validated cursor and content-hash event ids so rewind-driven journal
+  rewrites cannot duplicate history; system prompts and encrypted reasoning
+  are excluded as loss annotations, as are the harness-injected `<user_info>`
+  and `<system-reminder>` blocks Grok stores inside `user` records (project
+  instructions, the skills catalogue, and connected MCP servers), which would
+  otherwise leak harness internals into the portable ledger and evict real
+  conversation from the startup packet budget. Discovery
+  matches checkouts through `summary.json`'s recorded `info.cwd` and honors
+  `GROK_HOME`. Grok stays out of the bare-mode automatic pool. Verified
+  against Grok Build CLI v0.2.111 ([#237]).
+
+### Changed
+- Single-page, batch, and bootstrap consolidation prompts now ask the model
+  to connect related wiki pages with path-based wikilinks and to mirror the
+  dominant natural language of the source material while preserving code,
+  identifiers, paths, commands, error strings, and JSON field names. (#238)
+- The M8 access-counter reinforcement now bumps a page's `access_count` and
+  `last_accessed_at` at most once per minute instead of on every search that
+  returns it. A first sighting still bumps immediately, and a continuously hot
+  page remains eligible once per window, while the cooldown map self-prunes to
+  the pages searched within the window. This reduces redundant single-writer
+  work under bursty or overlapping searches while intentionally making
+  `access_count` a coarser retention signal. (#239)
 
 ## [1.18.0] - 2026-07-23
 
@@ -1517,6 +1613,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rejecting the empty actor. The automatic session-end / compaction
   consolidation in the hook router is system-initiated and deliberately
   stays anonymous ([#183]).
+- `install-mcp` and `install-hooks` now honor an explicit `--server-url` even
+  when it matches the compiled default. Previously that value was
+  indistinguishable from "flag omitted" and could be overridden by
+  `AI_MEMORY_SERVER_URL`, which could write config for the wrong local server
+  ([#178]).
+- Devin hook capture now derives `cwd` when the native payload omits it:
+  payload `cwd` still wins, followed by `DEVIN_PROJECT_DIR`, then the hook
+  process working directory. This keeps real Devin `SessionStart` /
+  `PostToolUse` fixtures routable without inventing a payload field.
+  Payloads without a `session_id` are bridged the same way: a per-host id is
+  minted at `SessionStart`, reused for later events, and cleared at
+  `SessionEnd`; set `AI_MEMORY_SESSION_ID` in the hook environment to pin an
+  externally managed run id. A payload-supplied id always wins ([#178]).
 
 ### Changed
 - `audit-contamination` no longer flags an observation whose project differs
@@ -1566,21 +1675,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The store migration set now admits `devin` as a persisted
   `sessions.agent_kind`, preserving the same workspace/project invariants as
   the other supported agents ([#178]).
-
-### Fixed
-- `install-mcp` and `install-hooks` now honor an explicit `--server-url` even
-  when it matches the compiled default. Previously that value was
-  indistinguishable from "flag omitted" and could be overridden by
-  `AI_MEMORY_SERVER_URL`, which could write config for the wrong local server
-  ([#178]).
-- Devin hook capture now derives `cwd` when the native payload omits it:
-  payload `cwd` still wins, followed by `DEVIN_PROJECT_DIR`, then the hook
-  process working directory. This keeps real Devin `SessionStart` /
-  `PostToolUse` fixtures routable without inventing a payload field.
-  Payloads without a `session_id` are bridged the same way: a per-host id is
-  minted at `SessionStart`, reused for later events, and cleared at
-  `SessionEnd`; set `AI_MEMORY_SESSION_ID` in the hook environment to pin an
-  externally managed run id. A payload-supplied id always wins ([#178]).
 
 ## [1.12.0] - 2026-07-12
 
@@ -1971,6 +2065,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `memory_install_self_routing` now returns the slim block, managed skill
   payloads, target hints, and overwrite guidance for agents that install
   routing through MCP.
+- Agent-facing routing prompts and auto-scope docs now call out that static MCP
+  clients running parallel sessions need explicit scope arguments or a
+  session-aware bridge that forwards the real lifecycle-hook session id.
 
 ### Added
 - The native `session-end` hook now emits a one-line stderr note when the spool
@@ -1984,11 +2081,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   files from the default project/global `.claude/skills` and `.agents/skills`
   roots after marker validation; custom `--target-dir` skill roots remain a
   manual cleanup path.
-
-### Changed
-- Agent-facing routing prompts and auto-scope docs now call out that static MCP
-  clients running parallel sessions need explicit scope arguments or a
-  session-aware bridge that forwards the real lifecycle-hook session id.
 
 ### Fixed
 - Thin-client HTTP CLI commands (`status`, `search`, `read-page`, `write-page`,
@@ -2201,6 +2293,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   metadata from frontmatter instead of forcing every reindexed page back to
   semantic/unpinned. Wiki writes now serialize canonical tier/pinned metadata so
   later watcher reconciliation remains idempotent for episodic and pinned pages.
+- Bounded heuristic session-page raw observation dumps and single-page
+  consolidation prompts so very large sessions cannot re-include unbounded
+  `## Raw observations` history (issue #102).
+- Hook spool no longer counts a server `429` (saturation / `hook queue full`)
+  against a spooled event's `MAX_ATTEMPTS` retry budget: transient backpressure
+  keeps the event queued without burning an attempt (`MAX_AGE_MS` still bounds
+  it), so a saturation burst no longer silently discards real observations.
 
 ### Added
 - `GET /admin/audit-contamination` (and `ai-memory audit-contamination`) — a
@@ -2224,15 +2323,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   table, and `docs/install.md`, and bundled it into the macOS release tarballs
   alongside `docs/install.md` (mirroring how the Windows zip ships
   `docs/windows.md`).
-
-### Fixed
-- Bounded heuristic session-page raw observation dumps and single-page
-  consolidation prompts so very large sessions cannot re-include unbounded
-  `## Raw observations` history (issue #102).
-- Hook spool no longer counts a server `429` (saturation / `hook queue full`)
-  against a spooled event's `MAX_ATTEMPTS` retry budget: transient backpressure
-  keeps the event queued without burning an attempt (`MAX_AGE_MS` still bounds
-  it), so a saturation burst no longer silently discards real observations.
 
 ## [1.1.0] - 2026-06-16
 
@@ -3360,7 +3450,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidator used server startup default project instead of the
   session's actual project.
 
-[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.28.1...HEAD
+[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.29.0...HEAD
+[1.29.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.29.0
 [1.28.1]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.28.1
 [1.28.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.28.0
 [1.27.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.27.0

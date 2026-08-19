@@ -937,7 +937,7 @@ docker run --rm akitaonrails/ai-memory:latest \
     --server-url "http://homelab:49374/mcp" \
     --auth-token "$TOKEN"
 
-# Extension — write to ~/.omp/agent/extensions/ai-memory.ts.
+# Extension — write to ~/.omp/agent/extensions/ai-memory-omp.ts.
 # If you have the local wrapper installed, prefer `--apply`:
 ai-memory install-hooks --agent omp --apply \
     --server-url "http://homelab:49374" \
@@ -952,11 +952,32 @@ for hooks; both target OMP's native `.omp` integration surface.
 ### Pi
 
 Pi does not read a native `mcp.json`. ai-memory supports Pi through one
-generated TypeScript extension at `~/.pi/agent/extensions/ai-memory.ts`; the
+generated TypeScript extension at `~/.pi/agent/extensions/ai-memory-pi.ts`; the
 same file captures lifecycle events and bridges ai-memory's HTTP MCP tools into
 Pi with `pi.registerTool`. When `PI_CODING_AGENT_DIR` is set (it relocates
 Pi's whole `~/.pi/agent` home), the extension is written to
-`$PI_CODING_AGENT_DIR/extensions/ai-memory.ts` instead.
+`$PI_CODING_AGENT_DIR/extensions/ai-memory-pi.ts` instead.
+
+The Pi and OMP extensions use distinct filenames (`ai-memory-pi.ts` and
+`ai-memory-omp.ts`) so installing one never overwrites the other. They are
+not interchangeable — only Pi's bridges MCP tools.
+
+#### OMP profiles
+
+`omp --profile <name>` relocates OMP's agent home to
+`~/.omp/profiles/<name>/agent`. Point the installer at the same profile so
+the extension lands where that profile loads it:
+
+```bash
+ai-memory install-hooks --agent omp --profile work --apply
+# or set it once for the shell:
+OMP_PROFILE=work ai-memory install-hooks --agent omp --apply
+```
+
+`--profile` takes precedence over `OMP_PROFILE`, and `uninstall --profile
+<name>` removes the same file. `PI_CODING_AGENT_DIR` overrides **both** —
+when it is set it names the agent directory outright, so no profile
+subdirectory is derived from it.
 
 ```bash
 ai-memory install-hooks --agent pi --apply \
@@ -1230,7 +1251,7 @@ If you set only the provider, ai-memory picks a sensible default:
 | `AI_MEMORY_LLM_PROVIDER=openai` | `gpt-5.4-mini` | Cheaper + faster alternative. Same parse reliability; mild over-classification on thin sessions. |
 | `AI_MEMORY_LLM_PROVIDER=openai-oauth` | `gpt-5.5` | ChatGPT/Codex backend. Run `ai-memory auth login openai-oauth` once; ai-memory stores the refresh token in `<data_dir>/auth.json` and refreshes access tokens automatically. |
 | `AI_MEMORY_LLM_PROVIDER=copilot` | `gpt-5.5` | GitHub Copilot Chat backend. ai-memory stores a GitHub user token in `<data_dir>/auth.json`, exchanges it for a short-lived Copilot API token, and refreshes before expiry. |
-| `AI_MEMORY_LLM_PROVIDER=gemini` | `gemini-2.5-flash` | Google's hosted option with a generous free tier. ai-memory disables Gemini 2.5 Flash's default dynamic thinking so hidden thought tokens do not truncate strict JSON. Set `GEMINI_API_KEY` (or `GOOGLE_API_KEY`). |
+| `AI_MEMORY_LLM_PROVIDER=gemini` | `gemini-3.5-flash` | Google's hosted option with a generous free tier. ai-memory disables Gemini 3.5 Flash's default dynamic thinking so hidden thought tokens do not truncate strict JSON. Set `GEMINI_API_KEY` (or `GOOGLE_API_KEY`). |
 | `AI_MEMORY_LLM_PROVIDER=opencode` | `claude-sonnet-4-6` | [OpenCode Zen/Go](https://opencode.ai) cloud API — OpenAI-compatible endpoint at `opencode.ai/zen/go/v1`. Set `OPENCODE_API_KEY` (key from `opencode.ai/auth`). Alias: `opencode-zen`. |
 | `AI_MEMORY_EMBEDDING_PROVIDER=openai` | `text-embedding-3-small` (1536-dim) | 5× cheaper than `-3-large` with marginal recall loss. |
 | `AI_MEMORY_EMBEDDING_PROVIDER=openai` + `AI_MEMORY_EMBEDDING_BASE_URL=https://openrouter.ai/api/v1` | `openai/text-embedding-3-small` via [OpenRouter](https://openrouter.ai) | Reuses `LLM_API_KEY` or `OPENAI_API_KEY` with the OpenAI-compatible embedding client. |
@@ -1440,6 +1461,14 @@ or returns a malformed response shape. For an incompatible endpoint, opt out:
 
 ```bash
 -e AI_MEMORY_LLM_COMPAT_STRICT=false
+```
+
+Hosted gateways that stream long completions past the default 300-second
+per-request ceiling fail with `http: error sending request`; raise the
+ceiling to match the gateway's worst-case generation time:
+
+```bash
+-e AI_MEMORY_LLM_TIMEOUT_SECS=900
 ```
 
 #### Match the consolidation budget to a local model's context window
