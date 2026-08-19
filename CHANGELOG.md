@@ -19,6 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `:homelab` tag and explains that release tags are published by CI only.
 
 ### Added
+- Added a `flake.nix` so NixOS and Nix users can build and run ai-memory
+  without the Rust toolchain or Docker: `nix build`, `nix run . --
+  --version`, or `nix develop` for a dev shell. The build is self-contained
+  (SQLite bundled, libgit2 vendored, rustls with webpki-roots — no OpenSSL,
+  no system-library hunting). The flake skips the packaging test suite
+  because those tests exercise the Docker-wrapper shell script and need
+  `docker`/`podman` on PATH; the rest of the workspace tests can be run via
+  `nix develop -c cargo test --workspace`. Flake inputs are pinned to
+  explicit revisions rather than floating branches, so the build is
+  reproducible, and a `nix` CI job builds the flake and runs the resulting
+  binary whenever a Nix build input changes plus weekly, so the packaging
+  cannot rot unnoticed. ([#405])
 - New `strip_root_combinators` config flag (env `AI_MEMORY_STRIP_ROOT_COMBINATORS`,
   or `strip_root_combinators = true` in config.toml) strips root-level
   `anyOf`/`oneOf`/`allOf` from MCP tool input schemas on every `tools/list`.
@@ -52,6 +64,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `~/.pi/agent` / `~/.omp/agent` default. (#411)
 
 ### Changed
+- Changed the default model for the `gemini` provider from `gemini-2.5-flash`
+  to `gemini-3.5-flash`. Google has scheduled the 2.5 Flash family for
+  retirement — the Gemini API deprecation table lists `gemini-2.5-flash-lite`
+  for **October 16, 2026** (Vertex AI and the Agent Platform list October 20;
+  ai-memory talks to the Gemini API, so the earlier date is the one that
+  applies). The thinking-budget workaround still covers the legacy models.
+  Note it is deliberately **not** applied to `gemini-3.5-flash-lite`, which
+  rejects `thinkingConfig` outright with HTTP 400 — unlike
+  `gemini-2.5-flash-lite`, which accepts it — so that model omits the field
+  and the e2e smoke test keeps `gemini-2.5-flash-lite` as its second
+  variant. (#423)
 - Documented OrcaRouter through the existing `openai-compat` provider instead
   of adding a redundant provider type, including the endpoint, model, and API
   key mapping needed for deployment. (#410)
