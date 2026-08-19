@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `ai-memory status` now reports local hook-spool health: pending event
+  count, age of the oldest queued event, and total failed-delivery attempts.
+  This makes "memory capture is delayed, not broken" visible to an operator
+  without digging through logs: a non-empty spool or an aging oldest event
+  means hook events are queued locally instead of reaching the server. The
+  spool is client-side, so the section reflects the local data-dir even when
+  the server is remote. The JSON form gains a matching `spool` object
+  (`pending`, `oldest_age_ms`, `retries_total`). (#428)
 - New `strip_root_combinators` config flag (env `AI_MEMORY_STRIP_ROOT_COMBINATORS`,
   or `strip_root_combinators = true` in config.toml) strips root-level
   `anyOf`/`oneOf`/`allOf` from MCP tool input schemas on every `tools/list`.

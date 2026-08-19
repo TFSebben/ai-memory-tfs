@@ -103,6 +103,68 @@ pub fn spool_len(spool: &Path) -> usize {
     list_entries(spool).map_or(0, |f| f.len())
 }
 
+/// Snapshot of local hook-spool health for operator status reporting.
+///
+/// Deliberately content-free: counts, ages, and attempt sums only — never
+/// payload excerpts, URLs, or token material (the spool holds private capture
+/// until it drains).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct SpoolHealth {
+    /// Events queued locally awaiting delivery.
+    pub pending: usize,
+    /// Age (ms) of the oldest queued event, or `None` when the spool is empty.
+    pub oldest_age_ms: Option<u64>,
+    /// Sum of failed-delivery attempts across all queued events.
+    pub retries_total: u64,
+}
+
+/// Snapshot local spool health: queued count and oldest-event age from the
+/// timestamp-embedded file names (no file reads), plus total retry attempts
+/// (one bounded read per queued entry — fine for an operator-invoked status
+/// command, never on the hook hot path).
+#[must_use]
+pub fn spool_health(spool: &Path) -> SpoolHealth {
+    let Some(mut files) = list_entries(spool) else {
+        return SpoolHealth::default();
+    };
+    if files.is_empty() {
+        return SpoolHealth::default();
+    }
+    files.sort();
+    let now = now_ms();
+    let oldest_created = files[0]
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(created_ms_from_name)
+        .unwrap_or(0);
+    let mut health = SpoolHealth {
+        pending: files.len(),
+        oldest_age_ms: Some(now.saturating_sub(oldest_created)),
+        retries_total: 0,
+    };
+    for path in &files {
+        if let Ok(bytes) = std::fs::read(path)
+            && let Ok(entry) = serde_json::from_slice::<SpoolEntry>(&bytes)
+        {
+            health.retries_total += u64::from(entry.attempts);
+        }
+    }
+    health
+}
+
+/// Extract the enqueue timestamp embedded in a spool file name
+/// (`{created_ms:013}-{pid}-{seq:016x}.json`), 0 when unparseable. Filenames
+/// are the only place `created_ms` is readable without opening the file, so
+/// oldest-age reporting never pays a read per queued event.
+fn created_ms_from_name(file_name: &str) -> u64 {
+    file_name
+        .split('-')
+        .next()
+        .unwrap_or(file_name)
+        .parse()
+        .unwrap_or(0)
+}
+
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -2065,5 +2127,80 @@ mod tests {
             1,
             "the spool entry survives a failed rewrite"
         );
+    }
+
+    #[test]
+    fn spool_health_is_default_when_dir_missing_or_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let missing = tmp.path().join("no-spool");
+        assert_eq!(spool_health(&missing), SpoolHealth::default());
+
+        let empty = spool_dir(tmp.path());
+        std::fs::create_dir_all(&empty).unwrap();
+        assert_eq!(spool_health(&empty), SpoolHealth::default());
+    }
+
+    #[test]
+    fn spool_health_reports_pending_oldest_age_and_retries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let spool = spool_dir(tmp.path());
+        // Two events with distinct enqueue times; the second carries two failed
+        // attempts. Names embed `created_ms`, so oldest-age comes from the name.
+        let mut old = entry_for("https://x/hook?event=old".into(), "{}".into(), None, false);
+        old.created_ms = now_ms().saturating_sub(5 * 60 * 1000);
+        let mut new = entry_for("https://x/hook?event=new".into(), "{}".into(), None, false);
+        new.created_ms = now_ms().saturating_sub(60 * 1000);
+        new.attempts = 2;
+        enqueue(&spool, &old).unwrap();
+        enqueue(&spool, &new).unwrap();
+
+        let before = now_ms();
+        let health = spool_health(&spool);
+        assert_eq!(health.pending, 2);
+        assert_eq!(health.retries_total, 2);
+        let oldest = health
+            .oldest_age_ms
+            .expect("non-empty spool reports an age");
+        assert!(
+            (5 * 60 * 1000..=5 * 60 * 1000 + 1_000).contains(&oldest),
+            "oldest age ~5m, got {oldest}ms (measured at {before})"
+        );
+    }
+
+    #[test]
+    fn spool_health_ignores_unparseable_entries_for_retries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let spool = spool_dir(tmp.path());
+        write_spool_entry(
+            &spool,
+            "0000000000042-1-0000000000000001.json",
+            "https://x/hook".into(),
+        );
+        std::fs::write(
+            spool.join("0000000000043-1-0000000000000002.json"),
+            b"not a spool entry",
+        )
+        .unwrap();
+
+        let before = now_ms();
+        let health = spool_health(&spool);
+        assert_eq!(health.pending, 2);
+        assert_eq!(health.retries_total, 0);
+        let oldest = health
+            .oldest_age_ms
+            .expect("non-empty spool reports an age");
+        assert!(
+            oldest >= before.saturating_sub(42),
+            "oldest name parses to 42ms, age {oldest}ms"
+        );
+    }
+
+    #[test]
+    fn created_ms_from_name_handles_malformed_names() {
+        assert_eq!(
+            created_ms_from_name("0000000000042-1-0000000000000001.json"),
+            42
+        );
+        assert_eq!(created_ms_from_name("garbage.json"), 0);
     }
 }

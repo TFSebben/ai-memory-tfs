@@ -8,6 +8,7 @@ use ai_memory_llm::{ProviderHealthSnapshot, ProviderHealthStatus, ProviderRoleHe
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
+use super::hook_spool::{spool_dir, spool_health};
 use crate::cli::StatusArgs;
 use crate::config::Config;
 use crate::http_client::{ServerEndpoint, get_json};
@@ -71,6 +72,7 @@ struct EmbeddingTriple {
 pub async fn run(config: &Config, args: StatusArgs) -> Result<()> {
     let ep = ServerEndpoint::from_config_resolving_auth(config).await;
     let report: Report = get_json(&ep, "/admin/status", &[]).await?;
+    let spool = spool_health(&spool_dir(&config.data_dir));
 
     if args.json {
         println!(
@@ -88,6 +90,7 @@ pub async fn run(config: &Config, args: StatusArgs) -> Result<()> {
                 },
                 "derived": report.derived,
                 "providers": report.providers,
+                "spool": spool,
                 "client": { "server_url": ep.url, "auth": ep.auth_token.is_some() },
             }))?
         );
@@ -120,6 +123,10 @@ pub async fn run(config: &Config, args: StatusArgs) -> Result<()> {
             report.derived.unresolved_links_from_latest_pages,
             report.derived.stale_links_from_latest_pages
         );
+        println!("  spool:");
+        println!("    pending:    {}", spool.pending);
+        println!("    oldest:     {}", spool_age_line(spool.oldest_age_ms));
+        println!("    retries:    {}", spool.retries_total);
         println!("  providers:");
         println!(
             "    llm:       {}",
@@ -136,6 +143,25 @@ pub async fn run(config: &Config, args: StatusArgs) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Render a spool age (ms) as a compact human duration, or `-` when the spool
+/// holds no events. Allowed to saturate: an operator reading a stuck-spool
+/// diagnosis wants the magnitude, not sub-second precision.
+fn spool_age_line(age_ms: Option<u64>) -> String {
+    let Some(ms) = age_ms else {
+        return "-".to_string();
+    };
+    let secs = ms / 1000;
+    if secs < 60 {
+        format!("{secs}s")
+    } else if secs < 3600 {
+        format!("{}m {}s", secs / 60, secs % 60)
+    } else if secs < 86_400 {
+        format!("{}h {}m", secs / 3600, (secs % 3600) / 60)
+    } else {
+        format!("{}d {}h", secs / 86_400, (secs % 86_400) / 3600)
+    }
 }
 
 fn provider_health_line(role: &ProviderRoleHealthSnapshot) -> String {
@@ -228,5 +254,15 @@ mod tests {
         assert!(provider_health_line(&role).contains("anthropic-oauth/claude-sonnet-4-6 error"));
         assert!(provider_health_line(&role).contains("status 401"));
         assert!(provider_health_line(&role).contains("bad token"));
+    }
+
+    #[test]
+    fn spool_age_line_renders_durations_and_empty() {
+        assert_eq!(spool_age_line(None), "-");
+        assert_eq!(spool_age_line(Some(0)), "0s");
+        assert_eq!(spool_age_line(Some(59_999)), "59s");
+        assert_eq!(spool_age_line(Some(60_000)), "1m 0s");
+        assert_eq!(spool_age_line(Some(3_661_000)), "1h 1m");
+        assert_eq!(spool_age_line(Some(172_800_000)), "2d 0h");
     }
 }
