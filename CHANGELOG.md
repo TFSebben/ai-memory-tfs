@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `ai-memory status` now reports local hook-spool health: pending event
+  count, age of the oldest queued event, and total failed-delivery attempts.
+  This makes "memory capture is delayed, not broken" visible to an operator
+  without digging through logs: a non-empty spool or an aging oldest event
+  means hook events are queued locally instead of reaching the server. The
+  spool is client-side, so the section reflects the local data-dir even when
+  the server is remote. The JSON form gains a matching `spool` object
+  (`pending`, `oldest_age_ms`, `retries_total`). Only files matching the
+  spool's own naming convention are counted, so a foreign `.json` in that
+  directory cannot inflate the pending count or be reported as an
+  epoch-aged entry. The section is also reported when the server cannot be
+  reached — the spool exists to buffer events while the server is down, so
+  that is precisely when its depth is worth seeing; it goes to stderr, so
+  `--json` consumers still get a single object on stdout. (#428)
+
 ## [1.29.0] - 2026-08-19
 
 ### Fixed
