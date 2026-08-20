@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Windows tests moved to their own workflow
+  (`.github/workflows/windows.yml`), running on every push to `main`,
+  nightly, on demand, and on any PR labelled `windows`. They were the
+  slowest job in `ci.yml` by a wide margin (~1000s against ~250s for the
+  same tests on Linux) while carrying `continue-on-error`, so every pull
+  request waited roughly seventeen minutes for a job that gated nothing
+  when all gating jobs finished in about eight. Coverage is now stronger,
+  not weaker: `continue-on-error` is gone, so a genuine Windows break shows
+  as a failed run on `main` instead of a yellow mark on a PR, and the
+  nightly run catches toolchain or dependency drift that no code change
+  would trigger.
 - `ai-memory status` now reports local hook-spool health: pending event
   count, age of the oldest queued event, and total failed-delivery attempts.
   This makes "memory capture is delayed, not broken" visible to an operator
