@@ -1462,11 +1462,14 @@ fn powershell_wrapper_forwards_subscription_oauth_tokens_without_putting_values_
     ];
     let mut command = Command::new("powershell.exe");
     command
-        // -ExecutionPolicy Bypass: bin/ai-memory.ps1 is an unsigned local script, so a machine
-        // left on the Windows client default of `Restricted` refuses to load it and the wrapper
-        // never runs (`UnauthorizedAccess`), failing this test for a reason unrelated to what it
-        // checks. Every other PowerShell invocation in the repo already passes Bypass; this one
-        // did not.
+        // -ExecutionPolicy Bypass: `-File` loads a script from disk, and execution policy
+        // governs script *files*, so on a machine left at the Windows client default of
+        // `Restricted` the unsigned bin/ai-memory.ps1 is refused (`UnauthorizedAccess`) and
+        // the wrapper never runs — failing this test for a reason unrelated to what it
+        // checks. The other in-repo invocation (render_shared.rs) uses `-Command`, which is
+        // not policy-gated and therefore needs no override; the generated hook commands pass
+        // Bypass defensively. GitHub's runner is permissive enough that this passes there
+        // today, so the fix is for running the suite on a stock Windows install.
         .args([
             "-NoLogo",
             "-NoProfile",
