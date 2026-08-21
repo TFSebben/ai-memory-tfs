@@ -158,6 +158,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file-tool activity without a subsequent Stop produces an advisory to check
   the working tree; and a mid-task exit (Stop without SessionEnd) is flagged
   so the receiver knows the previous session did not finish cleanly. (#425)
+- Observation bodies that exceed the 16 KiB durable ceiling are now
+  truncated with a **head-tail** strategy instead of head-only: the first
+  and last ~8 KiB are preserved with a `[truncated N bytes]` marker between
+  them. A 50 KB tool output previously lost its tail entirely, so the LLM
+  consolidator saw an incomplete picture; the new truncation keeps the
+  outcome and any trailing error context visible without increasing the
+  storage budget.
 
 ## [1.28.1] - 2026-08-18
 
