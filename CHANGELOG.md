@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.30.0] - 2026-08-21
+
 ### Fixed
 - Documented the `ai-memory status` hook-spool section in
   `docs/deploy.md`. It shipped with no operator-facing description, in the
@@ -3509,7 +3511,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidator used server startup default project instead of the
   session's actual project.
 
-[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.29.0...HEAD
+[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.30.0...HEAD
+[1.30.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.30.0
 [1.29.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.29.0
 [1.28.1]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.28.1
 [1.28.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.28.0
