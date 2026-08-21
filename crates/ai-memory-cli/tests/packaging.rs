@@ -1462,7 +1462,19 @@ fn powershell_wrapper_forwards_subscription_oauth_tokens_without_putting_values_
     ];
     let mut command = Command::new("powershell.exe");
     command
-        .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-File"])
+        // -ExecutionPolicy Bypass: bin/ai-memory.ps1 is an unsigned local script, so a machine
+        // left on the Windows client default of `Restricted` refuses to load it and the wrapper
+        // never runs (`UnauthorizedAccess`), failing this test for a reason unrelated to what it
+        // checks. Every other PowerShell invocation in the repo already passes Bypass; this one
+        // did not.
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+        ])
         .arg(repo_root().join("bin/ai-memory.ps1"))
         .args(["llm-test", "--provider", "anthropic-oauth"])
         .env("AI_MEMORY_DOCKER", &docker)
