@@ -35,6 +35,8 @@ use crate::commands::render_shared::{
 };
 use crate::config::{Config, DEFAULT_SERVER_URL};
 
+const CLAUDE_PROMPT_EVENT: &str = "UserPromptSubmit";
+
 /// Claude Code's settings file — hooks live under `hooks`.
 /// `$CLAUDE_CONFIG_DIR/settings.json` when the var is set, else
 /// `~/.claude/settings.json`.
@@ -355,6 +357,15 @@ pub fn run(config: &Config, mut args: InstallHooksArgs) -> Result<()> {
              switch to a native Claude Code install."
         );
     }
+    if (args.no_capture_prompts || args.capture_prompts)
+        && !prompt_capture_options_allowed(args.agent)
+    {
+        anyhow::bail!(
+            "--no-capture-prompts and --capture-prompts require --agent claude-code. Other \
+             agents may use their prompt hook to deliver handoff context, so removing it could \
+             break cross-agent continuity."
+        );
+    }
     if args.apply {
         // Preserve a project-strategy an earlier `--apply` baked when this run
         // did not pass `--project-strategy`. Without this, a bare re-apply —
@@ -462,6 +473,7 @@ pub fn run(config: &Config, mut args: InstallHooksArgs) -> Result<()> {
                 strategy,
                 &settings_path,
                 args.capture_assistant,
+                install_claude_prompt_capture(&args),
             )
         }
         AgentChoice::Codex => {
@@ -570,6 +582,43 @@ fn install_project_strategy(args: &InstallHooksArgs) -> Option<ProjectStrategyAr
     existing_agent_config(args)
         .as_deref()
         .and_then(|existing| baked_project_strategy(args.agent, existing))
+}
+
+/// Whether the Claude Code install should include its prompt-capture hook.
+/// Explicit flags win. A bare apply preserves the state of an existing
+/// ai-memory install so `upgrade` cannot silently restore a privacy opt-out.
+fn install_claude_prompt_capture(args: &InstallHooksArgs) -> bool {
+    if args.no_capture_prompts {
+        return false;
+    }
+    if args.capture_prompts || !args.apply {
+        return true;
+    }
+    existing_agent_config(args)
+        .as_deref()
+        .and_then(baked_claude_prompt_capture)
+        .unwrap_or(true)
+}
+
+/// Recover prompt-capture state only from hook entries owned by ai-memory.
+/// `None` means this is not an existing ai-memory Claude Code install.
+fn baked_claude_prompt_capture(existing: &str) -> Option<bool> {
+    let document: serde_json::Value = serde_json::from_str(existing).ok()?;
+    let hooks = document.get("hooks")?.as_object()?;
+    let has_ai_memory_hooks = hooks.values().any(|value| {
+        value
+            .as_array()
+            .is_some_and(|entries| entries.iter().any(is_ai_memory_hook_entry))
+    });
+    if !has_ai_memory_hooks {
+        return None;
+    }
+    Some(
+        hooks
+            .get(CLAUDE_PROMPT_EVENT)
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|entries| entries.iter().any(is_ai_memory_hook_entry)),
+    )
 }
 
 /// Read the config file `--apply` will update for the selected agent.
@@ -1178,6 +1227,19 @@ fn overlay_event_hooks(
     map.insert(event.to_string(), serde_json::Value::Array(entries));
 }
 
+/// Remove only ai-memory's entries for one event. Delete the event key when
+/// no third-party hooks remain so a rendered opt-out stays minimal.
+fn remove_ai_memory_event_hooks(map: &mut serde_json::Map<String, serde_json::Value>, event: &str) {
+    overlay_event_hooks(map, event, &serde_json::Value::Array(Vec::new()));
+    if map
+        .get(event)
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(Vec::is_empty)
+    {
+        map.remove(event);
+    }
+}
+
 fn overlay_kiro_cli_event_hooks(
     map: &mut serde_json::Map<String, serde_json::Value>,
     event: &str,
@@ -1216,6 +1278,24 @@ fn capture_assistant_allowed(agent: AgentChoice) -> bool {
     matches!(agent, AgentChoice::ClaudeCode) && local_hook_policy_v1_supported()
 }
 
+fn prompt_capture_options_allowed(agent: AgentChoice) -> bool {
+    agent == AgentChoice::ClaudeCode
+}
+
+fn configure_claude_prompt_capture(
+    mut payload: serde_json::Value,
+    capture_prompts: bool,
+) -> serde_json::Value {
+    if !capture_prompts
+        && let Some(hooks) = payload
+            .get_mut("hooks")
+            .and_then(serde_json::Value::as_object_mut)
+    {
+        hooks.remove(CLAUDE_PROMPT_EVENT);
+    }
+    payload
+}
+
 fn apply_to_claude_code_settings(
     hooks_dir: &Path,
     server_url: &str,
@@ -1238,15 +1318,19 @@ fn apply_to_claude_code_settings_in(
 ) -> Result<()> {
     let staged = stage_hook_scripts_in(hooks_dir, "claude-code", staging_data_local)?;
     let command_dir = staged_command_dir(&staged, "claude-code");
-    let payload = crate::commands::render_shared::build_claude_code_script_payload_for_test(
-        &command_dir,
-        server_url,
-        auth_token,
-        Some(data_dir),
-        args.project_strategy.and_then(ProjectStrategyArg::baked),
-        args.capture_assistant,
+    let capture_prompts = install_claude_prompt_capture(args);
+    let payload = configure_claude_prompt_capture(
+        crate::commands::render_shared::build_claude_code_script_payload_for_test(
+            &command_dir,
+            server_url,
+            auth_token,
+            Some(data_dir),
+            args.project_strategy.and_then(ProjectStrategyArg::baked),
+            args.capture_assistant,
+        ),
+        capture_prompts,
     );
-    apply_to_claude_code_settings_with_payload(payload, args)
+    apply_to_claude_code_settings_with_payload(payload, args, capture_prompts)
 }
 
 fn apply_to_claude_code_settings_with_staged(
@@ -1257,20 +1341,25 @@ fn apply_to_claude_code_settings_with_staged(
     args: &InstallHooksArgs,
 ) -> Result<()> {
     let command_dir = staged_command_dir(staged, "claude-code");
-    let payload = build_claude_code_payload_with_data_dir(
-        &command_dir,
-        server_url,
-        auth_token,
-        Some(data_dir),
-        args.project_strategy.and_then(ProjectStrategyArg::baked),
-        args.capture_assistant,
+    let capture_prompts = install_claude_prompt_capture(args);
+    let payload = configure_claude_prompt_capture(
+        build_claude_code_payload_with_data_dir(
+            &command_dir,
+            server_url,
+            auth_token,
+            Some(data_dir),
+            args.project_strategy.and_then(ProjectStrategyArg::baked),
+            args.capture_assistant,
+        ),
+        capture_prompts,
     );
-    apply_to_claude_code_settings_with_payload(payload, args)
+    apply_to_claude_code_settings_with_payload(payload, args, capture_prompts)
 }
 
 fn apply_to_claude_code_settings_with_payload(
     payload: serde_json::Value,
     args: &InstallHooksArgs,
+    capture_prompts: bool,
 ) -> Result<()> {
     let path = match &args.config_file {
         Some(p) => p.clone(),
@@ -1295,6 +1384,9 @@ fn apply_to_claude_code_settings_with_payload(
                 .context("`hooks` is present in settings.json but not an object")?;
             for (event, value) in &our_hooks {
                 overlay_event_hooks(hooks, event, value);
+            }
+            if !capture_prompts {
+                remove_ai_memory_event_hooks(hooks, CLAUDE_PROMPT_EVENT);
             }
             Ok(())
         })
@@ -4064,12 +4156,16 @@ fn render_claude_code(
     project_strategy: Option<&str>,
     settings_path: &Path,
     capture_assistant: bool,
+    capture_prompts: bool,
 ) -> Result<()> {
     // Soft check: warn (don't bail) if a script is missing. The user
     // may be running this command inside docker against a host path
     // that exists only on the host's filesystem — bailing would
     // sabotage the docker-only flow `setup-agent` enables.
-    for (_, script) in super::render_shared::CLAUDE_CODE_EVENTS {
+    for (event, script) in super::render_shared::CLAUDE_CODE_EVENTS {
+        if !capture_prompts && event == CLAUDE_PROMPT_EVENT {
+            continue;
+        }
         let script = hook_script_for_claude_code(script);
         let abs = hooks_dir.join(script.as_ref());
         if !abs.exists() {
@@ -4082,13 +4178,16 @@ fn render_claude_code(
             );
         }
     }
-    let payload = build_claude_code_payload_with_data_dir(
-        hooks_dir,
-        server_url,
-        auth_token,
-        Some(data_dir),
-        project_strategy,
-        capture_assistant,
+    let payload = configure_claude_prompt_capture(
+        build_claude_code_payload_with_data_dir(
+            hooks_dir,
+            server_url,
+            auth_token,
+            Some(data_dir),
+            project_strategy,
+            capture_assistant,
+        ),
+        capture_prompts,
     );
     let serialized =
         serde_json::to_string_pretty(&payload).context("serializing claude code hook config")?;
@@ -4508,6 +4607,63 @@ mod tests {
         );
     }
 
+    #[test]
+    fn prompt_capture_options_are_claude_code_only() {
+        use crate::cli::AgentChoice::*;
+        assert!(prompt_capture_options_allowed(ClaudeCode));
+        for agent in [
+            Codex,
+            CommandCode,
+            Cursor,
+            GeminiCli,
+            OpenCode,
+            Pi,
+            Omp,
+            Openclaw,
+            AntigravityCli,
+            Grok,
+            Zero,
+            Devin,
+            KimiCode,
+            KiroCli,
+            KiroCliV3,
+        ] {
+            assert!(!prompt_capture_options_allowed(agent), "{agent:?}");
+        }
+    }
+
+    #[test]
+    fn baked_prompt_capture_reads_only_owned_claude_hooks() {
+        let enabled = serde_json::json!({
+            "hooks": {
+                "SessionStart": [{ "hooks": [{ "command": "ai-memory hook --event session-start" }] }],
+                "UserPromptSubmit": [{ "hooks": [{ "command": "ai-memory hook --event user-prompt" }] }]
+            }
+        });
+        assert_eq!(
+            baked_claude_prompt_capture(&enabled.to_string()),
+            Some(true)
+        );
+
+        let disabled = serde_json::json!({
+            "hooks": {
+                "SessionStart": [{ "hooks": [{ "command": "ai-memory hook --event session-start" }] }],
+                "UserPromptSubmit": [{ "hooks": [{ "command": "third-party prompt guard" }] }]
+            }
+        });
+        assert_eq!(
+            baked_claude_prompt_capture(&disabled.to_string()),
+            Some(false)
+        );
+
+        let unrelated = serde_json::json!({
+            "hooks": {
+                "UserPromptSubmit": [{ "hooks": [{ "command": "third-party prompt guard" }] }]
+            }
+        });
+        assert_eq!(baked_claude_prompt_capture(&unrelated.to_string()), None);
+    }
+
     #[cfg(unix)]
     fn bash_program_for_installer_test() -> Option<std::path::PathBuf> {
         Some(std::path::PathBuf::from("bash"))
@@ -4730,6 +4886,8 @@ mod tests {
             profile: None,
             agent: AgentChoice::OpenCode,
             capture_assistant: false,
+            no_capture_prompts: false,
+            capture_prompts: false,
             hooks_dir: None,
             server_url: None,
             auth_token: None,
@@ -6355,6 +6513,8 @@ model = "gpt-5"
         let args = InstallHooksArgs {
             agent: AgentChoice::Omp,
             capture_assistant: false,
+            no_capture_prompts: false,
+            capture_prompts: false,
             hooks_dir: None,
             server_url: Some("http://127.0.0.1:49374".into()),
             auth_token: None,
@@ -6385,6 +6545,8 @@ model = "gpt-5"
         let args = InstallHooksArgs {
             agent: AgentChoice::Pi,
             capture_assistant: false,
+            no_capture_prompts: false,
+            capture_prompts: false,
             hooks_dir: None,
             server_url: Some("http://127.0.0.1:49374".into()),
             auth_token: None,
@@ -6749,6 +6911,8 @@ model = "gpt-5"
                 profile: None,
                 agent: AgentChoice::Codex,
                 capture_assistant: false,
+                no_capture_prompts: false,
+                capture_prompts: false,
                 hooks_dir: Some(hooks_tmp.path().to_path_buf()),
                 server_url: Some("http://127.0.0.1:49374".to_string()),
                 auth_token: None,
@@ -7233,6 +7397,8 @@ command = "AI_MEMORY_HOOK_URL=http://old:1 /old/ai-memory/hooks/kimi-code/sessio
                 profile: None,
                 agent: AgentChoice::ClaudeCode,
                 capture_assistant: false,
+                no_capture_prompts: false,
+                capture_prompts: false,
                 hooks_dir: Some(hooks_tmp.path().to_path_buf()),
                 server_url: Some("http://127.0.0.1:49374".to_string()),
                 auth_token: None,
@@ -7266,6 +7432,116 @@ command = "AI_MEMORY_HOOK_URL=http://old:1 /old/ai-memory/hooks/kimi-code/sessio
             command.contains(&staged_script.to_string_lossy().into_owned()),
             "generated command must reference staged script {}: {command}",
             staged_script.display()
+        );
+    }
+
+    #[test]
+    fn claude_prompt_opt_out_survives_reapply_and_preserves_third_party_hook() {
+        let hooks_tmp = TempDir::new().unwrap();
+        stub_scripts(
+            hooks_tmp.path(),
+            &[
+                "session-start.sh",
+                "session-end.sh",
+                "user-prompt-submit.sh",
+                "pre-tool-use.sh",
+                "post-tool-use.sh",
+                "pre-compact.sh",
+                "stop.sh",
+            ],
+        );
+
+        let config_tmp = TempDir::new().unwrap();
+        let config_path = config_tmp.path().join("settings.json");
+        let staging_tmp = TempDir::new().unwrap();
+        fs::write(
+            &config_path,
+            serde_json::json!({
+                "hooks": {
+                    "UserPromptSubmit": [
+                        { "hooks": [{ "command": "third-party prompt guard" }] },
+                        { "hooks": [{ "command": "/old/ai-memory hook --event user-prompt" }] }
+                    ]
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let disabled = InstallHooksArgs {
+            agent: AgentChoice::ClaudeCode,
+            config_file: Some(config_path.clone()),
+            no_capture_prompts: true,
+            ..default_hook_args()
+        };
+        apply_to_claude_code_settings_in(
+            hooks_tmp.path(),
+            "http://127.0.0.1:49374",
+            None,
+            config_tmp.path(),
+            staging_tmp.path(),
+            &disabled,
+        )
+        .unwrap();
+
+        let assert_disabled = || {
+            let parsed: serde_json::Value =
+                serde_json::from_str(&fs::read_to_string(&config_path).unwrap()).unwrap();
+            let prompts = parsed["hooks"][CLAUDE_PROMPT_EVENT]
+                .as_array()
+                .expect("third-party prompt hook keeps the event present");
+            assert_eq!(prompts.len(), 1);
+            assert!(
+                serde_json::to_string(prompts)
+                    .unwrap()
+                    .contains("third-party prompt guard")
+            );
+            assert!(!prompts.iter().any(is_ai_memory_hook_entry));
+        };
+        assert_disabled();
+
+        let bare_reapply = InstallHooksArgs {
+            agent: AgentChoice::ClaudeCode,
+            config_file: Some(config_path.clone()),
+            ..default_hook_args()
+        };
+        apply_to_claude_code_settings_in(
+            hooks_tmp.path(),
+            "http://127.0.0.1:49374",
+            None,
+            config_tmp.path(),
+            staging_tmp.path(),
+            &bare_reapply,
+        )
+        .unwrap();
+        assert_disabled();
+
+        let enabled = InstallHooksArgs {
+            agent: AgentChoice::ClaudeCode,
+            config_file: Some(config_path.clone()),
+            capture_prompts: true,
+            ..default_hook_args()
+        };
+        apply_to_claude_code_settings_in(
+            hooks_tmp.path(),
+            "http://127.0.0.1:49374",
+            None,
+            config_tmp.path(),
+            staging_tmp.path(),
+            &enabled,
+        )
+        .unwrap();
+
+        let parsed: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&config_path).unwrap()).unwrap();
+        let prompts = parsed["hooks"][CLAUDE_PROMPT_EVENT].as_array().unwrap();
+        assert_eq!(prompts.len(), 2, "third-party + one ai-memory hook");
+        assert_eq!(
+            prompts
+                .iter()
+                .filter(|entry| is_ai_memory_hook_entry(entry))
+                .count(),
+            1
         );
     }
 
@@ -7680,6 +7956,8 @@ command = "AI_MEMORY_HOOK_URL=http://old:1 /old/ai-memory/hooks/kimi-code/sessio
                 profile: None,
                 agent: AgentChoice::Devin,
                 capture_assistant: false,
+                no_capture_prompts: false,
+                capture_prompts: false,
                 hooks_dir: Some(hooks_tmp.path().to_path_buf()),
                 server_url: Some("http://127.0.0.1:49374".to_string()),
                 auth_token: None,
@@ -7744,6 +8022,8 @@ command = "AI_MEMORY_HOOK_URL=http://old:1 /old/ai-memory/hooks/kimi-code/sessio
                 profile: None,
                 agent: AgentChoice::Devin,
                 capture_assistant: false,
+                no_capture_prompts: false,
+                capture_prompts: false,
                 hooks_dir: Some(hooks_tmp.path().to_path_buf()),
                 server_url: Some("http://127.0.0.1:49374".to_string()),
                 auth_token: None,
@@ -7797,6 +8077,8 @@ command = "AI_MEMORY_HOOK_URL=http://old:1 /old/ai-memory/hooks/kimi-code/sessio
             profile: None,
             agent: AgentChoice::Devin,
             capture_assistant: false,
+            no_capture_prompts: false,
+            capture_prompts: false,
             hooks_dir: Some(hooks_tmp.path().to_path_buf()),
             server_url: Some("http://127.0.0.1:49374".to_string()),
             auth_token: None,
@@ -7843,6 +8125,8 @@ command = "AI_MEMORY_HOOK_URL=http://old:1 /old/ai-memory/hooks/kimi-code/sessio
             profile: None,
             agent: AgentChoice::Devin,
             capture_assistant: false,
+            no_capture_prompts: false,
+            capture_prompts: false,
             hooks_dir: Some(hooks_tmp.path().to_path_buf()),
             server_url: Some("http://127.0.0.1:49374".to_string()),
             auth_token: None,
@@ -7914,6 +8198,8 @@ command = "AI_MEMORY_HOOK_URL=http://old:1 /old/ai-memory/hooks/kimi-code/sessio
                 profile: None,
                 agent: AgentChoice::Devin,
                 capture_assistant: false,
+                no_capture_prompts: false,
+                capture_prompts: false,
                 hooks_dir: Some(hooks_tmp.path().to_path_buf()),
                 server_url: Some("http://127.0.0.1:49374".to_string()),
                 auth_token: None,
