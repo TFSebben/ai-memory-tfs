@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- The `gemini` LLM provider now respects the `LLM_BASE_URL` configuration value.
+  Previously, the base URL was hardcoded to `generativelanguage.googleapis.com`.
+  This allows using self-hosted, local Gemini-compatible models (like Gemma 3 hosted via Litert) that expect the native `/v1beta/models/...:generateContent` payload shape.
+
 ## [1.30.0] - 2026-08-21
 
 ### Fixed
