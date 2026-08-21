@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The Windows packaging test for the PowerShell wrapper now runs it with
+  `-ExecutionPolicy Bypass`. `-File` loads a script from disk and execution
+  policy governs script files, so on a machine at the Windows client default
+  of `Restricted` the unsigned wrapper was refused and the test failed for a
+  reason unrelated to what it asserts. Test-only; no shipped behaviour
+  changes. (#449)
+
 ### Added
 - `install-hooks --agent claude-code --no-capture-prompts` can now omit
   ai-memory's `UserPromptSubmit` hook, preventing prompt text from entering the
