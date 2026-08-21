@@ -1462,7 +1462,22 @@ fn powershell_wrapper_forwards_subscription_oauth_tokens_without_putting_values_
     ];
     let mut command = Command::new("powershell.exe");
     command
-        .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-File"])
+        // -ExecutionPolicy Bypass: `-File` loads a script from disk, and execution policy
+        // governs script *files*, so on a machine left at the Windows client default of
+        // `Restricted` the unsigned bin/ai-memory.ps1 is refused (`UnauthorizedAccess`) and
+        // the wrapper never runs — failing this test for a reason unrelated to what it
+        // checks. The other in-repo invocation (render_shared.rs) uses `-Command`, which is
+        // not policy-gated and therefore needs no override; the generated hook commands pass
+        // Bypass defensively. GitHub's runner is permissive enough that this passes there
+        // today, so the fix is for running the suite on a stock Windows install.
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+        ])
         .arg(repo_root().join("bin/ai-memory.ps1"))
         .args(["llm-test", "--provider", "anthropic-oauth"])
         .env("AI_MEMORY_DOCKER", &docker)
