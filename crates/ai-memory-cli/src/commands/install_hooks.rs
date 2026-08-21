@@ -472,8 +472,10 @@ pub fn run(config: &Config, mut args: InstallHooksArgs) -> Result<()> {
                 &config.data_dir,
                 strategy,
                 &settings_path,
-                args.capture_assistant,
-                install_claude_prompt_capture(&args),
+                ClaudeCaptureScope {
+                    assistant: args.capture_assistant,
+                    prompts: install_claude_prompt_capture(&args),
+                },
             )
         }
         AgentChoice::Codex => {
@@ -4148,6 +4150,22 @@ fn exe_dir_guess() -> Option<PathBuf> {
 // CLAUDE_CODE_EVENTS + build_claude_code_payload now live in
 // `super::render_shared`, shared with `setup-agent`.
 
+/// Which optional capture surfaces the generated Claude Code settings should
+/// include.
+///
+/// Grouped rather than passed as two positional bools: at the call site
+/// `true, false` said nothing about which surface was which, and the pair is
+/// exactly the privacy-relevant part of this install — worth naming.
+#[derive(Debug, Clone, Copy)]
+struct ClaudeCaptureScope {
+    /// Include the assistant-message capture hook (double opt-in, off by
+    /// default).
+    assistant: bool,
+    /// Include the `UserPromptSubmit` hook. When false the entry is omitted
+    /// entirely, so the agent never emits prompt text at all.
+    prompts: bool,
+}
+
 fn render_claude_code(
     hooks_dir: &Path,
     server_url: &str,
@@ -4155,9 +4173,12 @@ fn render_claude_code(
     data_dir: &Path,
     project_strategy: Option<&str>,
     settings_path: &Path,
-    capture_assistant: bool,
-    capture_prompts: bool,
+    capture: ClaudeCaptureScope,
 ) -> Result<()> {
+    let ClaudeCaptureScope {
+        assistant: capture_assistant,
+        prompts: capture_prompts,
+    } = capture;
     // Soft check: warn (don't bail) if a script is missing. The user
     // may be running this command inside docker against a host path
     // that exists only on the host's filesystem — bailing would
