@@ -15,6 +15,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hooks under the same event survive, and `--capture-prompts` explicitly
   enables prompt capture again. Other agents reject both flags because some
   depend on their prompt hook to inject handoff context. (#446)
+- New `gemini_safe_schemas` config flag (env `AI_MEMORY_GEMINI_SAFE_SCHEMAS`, or
+  `gemini_safe_schemas = true` in config.toml) and a matching `?flavor=gemini`
+  MCP URL marker (alias `?flavor=vertex`) serve tool input schemas in the subset
+  Google's `Schema` accepts. `schemars` renders every optional tool argument as a
+  nullable union (`"type": ["integer", "null"]`), but Vertex/Gemini
+  `functionDeclaration.parameters` takes a single `type` and treats `any_of` as
+  exclusive with every sibling key — so a client that forwards our schema
+  verbatim produced `any_of` with `description` beside it and Vertex failed the
+  whole session at `tools/list` with "specified other fields alongside any_of".
+  The dialect collapses those unions to a single `type` plus `nullable: true`,
+  the same normalization Gemini CLI performs client-side, which is why Gemini CLI
+  and Antigravity CLI never hit this and need no marker; pass-through clients such
+  as OpenCode on a Vertex model did. It implies `strip_root_combinators`, and
+  runtime argument validation is unchanged in every dialect. The key is
+  documented in the generated `config.default.toml`, and `docs/mcp-install.md`
+  now collects all three schema dialects in one table. (#450)
 - Windows tests moved to their own workflow
   (`.github/workflows/windows.yml`), running on every push to `main`,
   nightly, on demand, and on any PR labelled `windows`. They were the

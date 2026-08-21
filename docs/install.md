@@ -946,6 +946,27 @@ docker run --rm akitaonrails/ai-memory:latest \
 Restart OpenCode after installing or changing the plugin; plugins are
 loaded at startup.
 
+**On a Gemini/Vertex model, serve Gemini-safe schemas.** OpenCode forwards MCP
+tool schemas to the configured provider verbatim, and Google's `Schema`
+(Vertex/Gemini `functionDeclaration.parameters`) accepts only a single `type` per
+field. `schemars` renders every optional tool argument as a nullable union
+(`"type": ["integer", "null"]`), so the provider rewrites it into `any_of` with
+`description` still beside it and Vertex fails the whole session at
+`tools/list`:
+
+```
+Unable to submit request because `ai-memory_memory_auto_improve` functionDeclaration
+`parameters.max_proposals` schema specified other fields alongside any_of.
+When using any_of, it must be the only field set.
+```
+
+Either set `gemini_safe_schemas = true` in `config.toml`
+(`AI_MEMORY_GEMINI_SAFE_SCHEMAS=true`) on the server, which collapses those
+unions to `"type": "integer"` plus `nullable: true` for every client, or append
+`?flavor=gemini` to just this client's MCP URL. Runtime validation is unchanged
+either way. Gemini CLI and Antigravity CLI normalize schemas client-side and
+need neither.
+
 ### Oh My Pi / OMP
 
 ```bash
