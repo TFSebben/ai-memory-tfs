@@ -441,6 +441,23 @@ sanitization before any observation reaches SQLite or FTS. Native hook commands
 invoke the installed binary directly, so upgrading that binary is enough to
 receive the client-side cap.
 
+**Disable Claude Code prompt capture.** Regulated or mixed-trust machines can
+leave the rest of Claude Code's lifecycle capture enabled while preventing
+`UserPromptSubmit` text from entering the local spool or wire:
+
+```bash
+ai-memory install-hooks --agent claude-code --no-capture-prompts --apply
+```
+
+The installer removes only ai-memory's prompt hook and preserves third-party
+hooks registered under the same event. A later bare `install-hooks --apply`
+(including an upgrade refresh) inherits the disabled state. Re-enable prompt
+capture explicitly with `--capture-prompts`. These options are Claude Code-only:
+some other agents use their prompt hook to inject handoff context, so removing
+it would break continuity. Disabling prompt capture reduces session summaries
+and recall quality because user intent is no longer part of the observation
+stream; tool and session-boundary capture continues unchanged.
+
 Some agent harnesses attach the assistant's final turn to their `Stop` event —
 Claude Code sends it as a raw `last_assistant_message`. By default that text is
 never persisted: the native hook binary strips the raw field before it can reach

@@ -213,7 +213,8 @@ instead. The fallback is Antigravity-only and is discarded with any event
 rejected by capture exclusions.
 Unsupported tool envelopes do not gain a PreToolUse
 body, and association is only by matching agent-provided call IDs. User-prompt stores its prompt
-text, notification stores its message/text, and post-compaction stores its
+text unless Claude Code hooks were installed with `--no-capture-prompts`;
+notification stores its message/text, and post-compaction stores its
 summary; other event bodies are currently empty unless explicitly supported.
 Stop/assistant-message capture is disabled by default and never persisted; it is
 available only through the explicit double opt-in described in the install guide

@@ -1629,6 +1629,16 @@ pub struct InstallHooksArgs {
     /// without this flag removes it (idempotent). Default off.
     #[arg(long)]
     pub capture_assistant: bool,
+    /// Do not install Claude Code's `UserPromptSubmit` capture hook. Prompt
+    /// text is then excluded before it can enter the local spool or wire.
+    /// A bare `--apply` re-run preserves an existing opt-out; use
+    /// `--capture-prompts` to enable prompt capture again explicitly.
+    #[arg(long, conflicts_with = "capture_prompts")]
+    pub no_capture_prompts: bool,
+    /// Explicitly enable Claude Code prompt capture after an earlier
+    /// `--no-capture-prompts` install. Only valid for Claude Code.
+    #[arg(long, conflicts_with = "no_capture_prompts")]
+    pub capture_prompts: bool,
     /// Profile to use for OMP extensions, which relocates the path to
     /// `~/.omp/profiles/<profile>/agent/extensions/`.
     #[arg(long)]
@@ -2417,6 +2427,48 @@ mod tests {
         assert_eq!(
             args.project_strategy.and_then(ProjectStrategyArg::baked),
             Some("repo-root")
+        );
+    }
+
+    #[test]
+    fn install_hooks_prompt_capture_flags_parse_and_conflict() {
+        let disabled = Cli::try_parse_from([
+            "ai-memory",
+            "install-hooks",
+            "--agent",
+            "claude-code",
+            "--no-capture-prompts",
+        ])
+        .expect("--no-capture-prompts parses");
+        let Command::InstallHooks(disabled) = disabled.command else {
+            panic!("expected install-hooks command");
+        };
+        assert!(disabled.no_capture_prompts);
+        assert!(!disabled.capture_prompts);
+
+        let enabled = Cli::try_parse_from([
+            "ai-memory",
+            "install-hooks",
+            "--agent",
+            "claude-code",
+            "--capture-prompts",
+        ])
+        .expect("--capture-prompts parses");
+        let Command::InstallHooks(enabled) = enabled.command else {
+            panic!("expected install-hooks command");
+        };
+        assert!(!enabled.no_capture_prompts);
+        assert!(enabled.capture_prompts);
+
+        assert!(
+            Cli::try_parse_from([
+                "ai-memory",
+                "install-hooks",
+                "--no-capture-prompts",
+                "--capture-prompts",
+            ])
+            .is_err(),
+            "the two prompt-capture choices must conflict"
         );
     }
 

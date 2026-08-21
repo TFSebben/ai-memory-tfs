@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   changes. (#449)
 
 ### Added
+- `install-hooks --agent claude-code --no-capture-prompts` can now omit
+  ai-memory's `UserPromptSubmit` hook, preventing prompt text from entering the
+  local spool or wire while leaving session, tool, compaction, and handoff
+  capture active. Re-applying or upgrading preserves the opt-out, third-party
+  hooks under the same event survive, and `--capture-prompts` explicitly
+  enables prompt capture again. Other agents reject both flags because some
+  depend on their prompt hook to inject handoff context. (#446)
 - New `gemini_safe_schemas` config flag (env `AI_MEMORY_GEMINI_SAFE_SCHEMAS`, or
   `gemini_safe_schemas = true` in config.toml) and a matching `?flavor=gemini`
   MCP URL marker (alias `?flavor=vertex`) serve tool input schemas in the subset
