@@ -533,7 +533,8 @@ pub async fn run(config: &Config, args: ServeArgs) -> Result<()> {
         .with_sanitizer(sanitizer.clone())
         .with_trusted_proxy_identity(trusted_proxy_identity_enabled(&config.auth))
         .with_per_user_slots(config.slots.per_user)
-        .with_strip_root_combinators(config.strip_root_combinators);
+        .with_strip_root_combinators(config.strip_root_combinators)
+        .with_gemini_safe_schemas(config.gemini_safe_schemas);
     if let Some(e) = embedder.clone() {
         server = server.with_embedder(e);
     }
