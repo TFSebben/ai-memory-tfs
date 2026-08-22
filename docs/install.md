@@ -13,7 +13,7 @@ path (docker + Claude Code). This page covers everything else:
 - [Installing hooks without docker](#installing-hooks-without-docker)
   (curl-based installer)
 - [Running ai-memory without docker](#running-ai-memory-without-docker)
-  (cargo install, building from source)
+  (mise, building from source)
 - [Managed cross-harness workstreams](managed-workstreams.md)
   (`ai-memory run`, transparent native resume, and argument forwarding)
 - [LLM provider tiers + self-hosted Ollama](#llm-provider-tiers)
@@ -1205,11 +1205,37 @@ automatically; you only set it by hand for custom container setups.
 
 ## Running ai-memory without docker
 
-Most users should stick to the docker wrapper from the Quick start. On macOS,
-tagged releases also publish native `ai-memory-macos-aarch64.tar.gz` and
-`ai-memory-macos-x86_64.tar.gz` archives when you only need the client CLI.
-Build from source only when hacking on ai-memory itself or running on a platform
-docker doesn't support.
+Most users should stick to the docker wrapper from the Quick start. Arch
+Linux users have the [AUR packages](#arch-linux-native-packages-aur). For any
+other host, `mise` installs a tagged release binary directly from GitHub —
+no Rust toolchain needed:
+
+```bash
+mise use -g github:akitaonrails/ai-memory
+```
+
+This uses [mise's GitHub backend](https://mise.jdx.dev/dev-tools/backends/github.html),
+which downloads the release archive matching your OS/arch
+(`ai-memory-linux-x86_64.tar.gz`, `ai-memory-macos-aarch64.tar.gz`, etc.),
+verifies its checksum, GitHub artifact attestation, and SLSA provenance, then
+extracts it and puts `ai-memory` on `PATH`. No dedicated mise plugin or
+registry entry is required — the backend works against any repo whose
+release assets follow this naming convention. By default mise also holds back
+the very newest release for a short safety window
+([`minimum_release_age`](https://mise.jdx.dev/dev-tools/github-backend.html)),
+so a fresh tag may resolve to the previous version for a day or so; pin an
+exact tag with `mise use -g github:akitaonrails/ai-memory@1.30.0` to bypass
+that.
+
+`cargo install ai-memory` is not available: the crate name is already taken
+by an unrelated project on crates.io, as is `ai-memory-core` (the workspace's
+foundational internal crate). Publishing would require renaming at least
+that crate for the registry — a naming decision the project hasn't made yet.
+
+Build from source only when hacking on ai-memory itself or running on a
+platform none of the above covers. On macOS, tagged releases also publish
+native `ai-memory-macos-aarch64.tar.gz` and `ai-memory-macos-x86_64.tar.gz`
+archives when you only need the client CLI.
 
 ```bash
 git clone https://github.com/akitaonrails/ai-memory ~/.ai-memory
