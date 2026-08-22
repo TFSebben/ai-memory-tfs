@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Auto-improve no longer rejects every proposal from a model that spells the
+  single supported operation differently (#458). `operation` was a free-form
+  string validated by exact match against `create_or_update`, while the
+  schema carried no constraint and the neighbouring field description — "path
+  that would be created or updated" — actively invited `"create"`. Two local
+  models took the invitation for 6/6 candidates, so with
+  `require_approval = false` the learning loop completed having silently done
+  nothing, and the rejection buffer then fed `unsupported_operation` rows back
+  into later reviewer prompts as noise. The schema now advertises a
+  single-value enum, so providers with constrained decoding cannot emit
+  anything else, and validation normalises the unambiguous spellings
+  (`create`, `update`, `upsert`, `create/update`, …) for providers without it.
+  Operations the pipeline genuinely cannot perform — `delete`, `rename`,
+  `move` — still fail with the same reason as before.
+
 ### Added
 - The `gemini` LLM provider now respects the `LLM_BASE_URL` configuration value.
   Previously, the base URL was hardcoded to `generativelanguage.googleapis.com`.
