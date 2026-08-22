@@ -2038,3 +2038,35 @@ mod tests {
         assert_eq!(provider.provider, ProviderChoice::AnthropicOAuth);
     }
 }
+
+#[test]
+fn llm_provider_config_passes_base_url_to_gemini() {
+    let cfg = Config {
+        llm_provider: Some("gemini".into()),
+        llm_base_url: Some("http://localhost:9379".into()),
+        runtime_env: RuntimeEnv {
+            gemini_api_key: Some(SecretString::from("dummy")),
+            ..RuntimeEnv::default()
+        },
+        ..Config::default()
+    };
+    let provider = cfg.llm_provider_config().unwrap().unwrap();
+    assert_eq!(provider.provider, ProviderChoice::Gemini);
+    assert_eq!(provider.base_url.as_deref(), Some("http://localhost:9379"));
+}
+
+#[test]
+fn llm_provider_config_gemini_uses_default_base_url_when_none_provided() {
+    let cfg = Config {
+        llm_provider: Some("gemini".into()),
+        llm_base_url: None, // Explicitly None
+        runtime_env: RuntimeEnv {
+            gemini_api_key: Some(SecretString::from("dummy")),
+            ..RuntimeEnv::default()
+        },
+        ..Config::default()
+    };
+    let provider = cfg.llm_provider_config().unwrap().unwrap();
+    assert_eq!(provider.provider, ProviderChoice::Gemini);
+    assert_eq!(provider.base_url, None);
+}
