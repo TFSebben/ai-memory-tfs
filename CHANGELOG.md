@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.31.0] - 2026-08-22
+
 ### Fixed
 - Auto-improve no longer rejects every proposal from a model that spells the
   single supported operation differently (#458). `operation` was a free-form
@@ -3532,7 +3534,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidator used server startup default project instead of the
   session's actual project.
 
-[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.30.0...HEAD
+[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.31.0...HEAD
+[1.31.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.31.0
 [1.30.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.30.0
 [1.29.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.29.0
 [1.28.1]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.28.1
