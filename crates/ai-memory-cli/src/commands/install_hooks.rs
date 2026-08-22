@@ -5702,17 +5702,26 @@ model = "gpt-5"
             "PowerShell hooks require the shared lib helper"
         );
 
-        for agent_dir in [
-            "claude-code",
-            "codex",
-            "cursor",
-            "gemini-cli",
-            "grok",
-            "devin",
-            "opencode",
-            "antigravity-cli",
-            "kimi-code",
-        ] {
+        // Enumerate the bundles instead of listing them: a hardcoded
+        // list silently skips whatever agent lands next, which is how
+        // `command-code` and `kiro-cli` shipped uncovered. `lib/` holds
+        // the shared PowerShell helper, not an agent bundle.
+        let mut agent_dirs: Vec<String> = fs::read_dir(&hooks_root)
+            .unwrap_or_else(|e| panic!("failed to read {}: {e}", hooks_root.display()))
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.is_dir())
+            .filter_map(|path| path.file_name()?.to_str().map(str::to_string))
+            .filter(|name| name != "lib")
+            .collect();
+        agent_dirs.sort();
+        assert!(
+            !agent_dirs.is_empty(),
+            "no agent hook bundles found under {}",
+            hooks_root.display()
+        );
+
+        for agent_dir in agent_dirs {
+            let agent_dir = agent_dir.as_str();
             let dir = hooks_root.join(agent_dir);
             let mut sh = BTreeMap::new();
             let mut ps1 = BTreeMap::new();
