@@ -136,7 +136,12 @@ fn is_metadata_bullet(line: &str) -> bool {
 /// merely repeats `title`. On a session page that lands on the prompts after
 /// the first, which is the part `title` does not already show.
 fn page_descriptor(raw: &str, title: &str) -> String {
-    let title_key = title.trim().trim_end_matches('\u{2026}').trim();
+    // `truncate_for_title` suffixes an ellipsis only when it shortened the
+    // title, so an ellipsis-free title is complete: a longer line that merely
+    // opens with it is a different sentence and must be kept.
+    let title_trimmed = title.trim();
+    let title_was_truncated = title_trimmed.ends_with('\u{2026}');
+    let title_key = title_trimmed.trim_end_matches('\u{2026}').trim();
     let mut out = String::new();
     for line in raw.lines().map(str::trim) {
         if line.is_empty()
@@ -152,7 +157,13 @@ fn page_descriptor(raw: &str, title: &str) -> String {
         if content.is_empty() {
             continue;
         }
-        if !title_key.is_empty() && content.starts_with(title_key) {
+        let repeats_title = !title_key.is_empty()
+            && if title_was_truncated {
+                content.starts_with(title_key)
+            } else {
+                content == title_key
+            };
+        if repeats_title {
             continue;
         }
         if !out.is_empty() {
@@ -8476,6 +8487,19 @@ mod tests {
         assert_eq!(
             page_descriptor(body, title),
             "o rollback falhou no passo do migrate"
+        );
+    }
+
+    #[test]
+    fn page_descriptor_keeps_a_line_that_only_starts_with_a_complete_title() {
+        // `truncate_for_title` appends the ellipsis only past 80 chars, so a
+        // title without one is complete. A longer line that merely opens with
+        // it is a different sentence, not a repeat.
+        let title = "vamos revisar o deploy";
+        let body = "# vamos revisar o deploy\n\n1. vamos revisar o deploy\n2. vamos revisar o deploy e o rollback do migrate\n";
+        assert_eq!(
+            page_descriptor(body, title),
+            "vamos revisar o deploy e o rollback do migrate"
         );
     }
 
