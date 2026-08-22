@@ -11,9 +11,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use ai_memory_core::{
-    AgentKind, AutoImproveProposalId, AutoImproveRunId, Handoff, HandoffId, HandoffState,
-    IdentityKey, ManagedRunId, Observation, ObservationId, ObservationKind, OwnerFilter, PageId,
-    PagePath, ProjectId, SessionId, User, UserId, WorkspaceId, WorkstreamEvent, WorkstreamId,
+    AgentKind, AutoImproveProposalId, AutoImproveRunId, Handoff, HandoffContent, HandoffId,
+    HandoffLifecycle, HandoffOrigin, HandoffScope, HandoffState, IdentityKey, ManagedRunId,
+    Observation, ObservationId, ObservationKind, OwnerFilter, PageId, PagePath, ProjectId,
+    SessionId, User, UserId, WorkspaceId, WorkstreamEvent, WorkstreamId,
 };
 use jiff::Timestamp;
 use parking_lot::Mutex;
@@ -7186,7 +7187,7 @@ fn is_handoff_candidate(h: &Handoff, cwd_filter: Option<&str>, owner_filter: &Ow
     // cross-operator mixing this filter exists to stop. Handoffs with no owner
     // (every pre-V39 row, and anything written without an actor) stay visible
     // to everyone, which preserves single-operator behaviour untouched.
-    if !owner_filter.admits(h.owner_user.as_deref()) {
+    if !owner_filter.admits(h.origin.owner_user.as_deref()) {
         return false;
     }
     // Manual handoffs (memory_handoff_begin always sets from_session_id = None)
@@ -7194,10 +7195,10 @@ fn is_handoff_candidate(h: &Handoff, cwd_filter: Option<&str>, owner_filter: &Ow
     // SessionEnd handoffs are cwd-path-boundary scoped. This makes "a manual
     // handoff always beats the auto one" deterministic on from_session_id,
     // instead of relying on a manual handoff happening to have a NULL cwd.
-    if h.from_session_id.is_none() {
+    if h.origin.from_session_id.is_none() {
         return true;
     }
-    auto_handoff_matches_cwd(h.cwd.as_deref(), cwd_filter)
+    auto_handoff_matches_cwd(h.origin.cwd.as_deref(), cwd_filter)
 }
 
 /// Whether an automatic handoff is eligible for a session starting in
@@ -7242,16 +7243,16 @@ pub(crate) fn handoff_selection_key(
 
 fn prefer_handoff(a: &Handoff, b: &Handoff) -> std::cmp::Ordering {
     handoff_selection_key(
-        a.from_session_id.is_none(),
-        a.created_at.as_microsecond(),
-        a.cwd.as_deref(),
-        a.id,
+        a.origin.from_session_id.is_none(),
+        a.lifecycle.created_at.as_microsecond(),
+        a.origin.cwd.as_deref(),
+        a.scope.id,
     )
     .cmp(&handoff_selection_key(
-        b.from_session_id.is_none(),
-        b.created_at.as_microsecond(),
-        b.cwd.as_deref(),
-        b.id,
+        b.origin.from_session_id.is_none(),
+        b.lifecycle.created_at.as_microsecond(),
+        b.origin.cwd.as_deref(),
+        b.scope.id,
     ))
 }
 
@@ -7318,35 +7319,43 @@ fn row_to_handoff(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoreResult<Hando
             .map(SessionId::from_slice)
             .transpose()?;
         Ok(Handoff {
-            id: HandoffId::from_slice(&id_bytes)?,
-            workspace_id: WorkspaceId::from_slice(&ws_bytes)?,
-            project_id: ProjectId::from_slice(&pj_bytes)?,
-            from_session_id: from_session,
-            from_agent: parse_agent(&from_agent),
-            to_agent: to_agent.as_deref().map(parse_agent),
-            cwd,
-            summary,
-            open_questions,
-            next_steps,
-            files_touched,
-            state: state.parse::<HandoffState>().map_err(StoreError::from)?,
-            created_at: jiff::Timestamp::from_microsecond(created_us).map_err(|e| {
-                StoreError::Memory(ai_memory_core::MemoryError::MalformedRecord(format!(
-                    "bad created_at: {e}"
-                )))
-            })?,
-            accepted_by: accepted_by.as_deref().map(parse_agent),
-            accepted_at: accepted_at_us
-                .map(jiff::Timestamp::from_microsecond)
-                .transpose()
-                .map_err(|e| {
+            scope: HandoffScope {
+                id: HandoffId::from_slice(&id_bytes)?,
+                workspace_id: WorkspaceId::from_slice(&ws_bytes)?,
+                project_id: ProjectId::from_slice(&pj_bytes)?,
+            },
+            origin: HandoffOrigin {
+                from_session_id: from_session,
+                from_agent: parse_agent(&from_agent),
+                to_agent: to_agent.as_deref().map(parse_agent),
+                cwd,
+                owner_user,
+            },
+            content: HandoffContent {
+                summary,
+                open_questions,
+                next_steps,
+                files_touched,
+            },
+            lifecycle: HandoffLifecycle {
+                state: state.parse::<HandoffState>().map_err(StoreError::from)?,
+                created_at: jiff::Timestamp::from_microsecond(created_us).map_err(|e| {
                     StoreError::Memory(ai_memory_core::MemoryError::MalformedRecord(format!(
-                        "bad accepted_at: {e}"
+                        "bad created_at: {e}"
                     )))
                 })?,
-            accepted_by_session: accepted_session,
-            owner_user,
-            accepted_by_user,
+                accepted_by: accepted_by.as_deref().map(parse_agent),
+                accepted_at: accepted_at_us
+                    .map(jiff::Timestamp::from_microsecond)
+                    .transpose()
+                    .map_err(|e| {
+                        StoreError::Memory(ai_memory_core::MemoryError::MalformedRecord(format!(
+                            "bad accepted_at: {e}"
+                        )))
+                    })?,
+                accepted_by_session: accepted_session,
+                accepted_by_user,
+            },
         })
     })())
 }
@@ -7593,8 +7602,9 @@ mod tests {
     use crate::Store;
 
     use ai_memory_core::{
-        AgentKind, Handoff, HandoffId, HandoffState, NewHandoff, NewSession, OwnerFilter,
-        ProjectId, SessionId, WorkspaceId,
+        AgentKind, Handoff, HandoffContent, HandoffId, HandoffLifecycle, HandoffOrigin,
+        HandoffScope, HandoffState, NewHandoff, NewSession, OwnerFilter, ProjectId, SessionId,
+        WorkspaceId,
     };
 
     #[test]
@@ -7641,29 +7651,38 @@ mod tests {
     /// which handoff won.
     fn handoff(summary: &str, cwd: Option<&str>, manual: bool, t: i64) -> Handoff {
         Handoff {
-            id: HandoffId::new(),
-            workspace_id: WorkspaceId::new(),
-            project_id: ProjectId::new(),
-            from_session_id: if manual { None } else { Some(SessionId::new()) },
-            from_agent: AgentKind::ClaudeCode,
-            to_agent: None,
-            cwd: cwd.map(str::to_string),
-            summary: summary.to_string(),
-            open_questions: vec![],
-            next_steps: vec![],
-            files_touched: vec![],
-            state: HandoffState::Open,
-            created_at: jiff::Timestamp::from_microsecond(t).unwrap(),
-            accepted_by: None,
-            accepted_at: None,
-            accepted_by_session: None,
-            owner_user: None,
-            accepted_by_user: None,
+            scope: HandoffScope {
+                id: HandoffId::new(),
+                workspace_id: WorkspaceId::new(),
+                project_id: ProjectId::new(),
+            },
+            origin: HandoffOrigin {
+                from_session_id: if manual { None } else { Some(SessionId::new()) },
+                from_agent: AgentKind::ClaudeCode,
+                to_agent: None,
+                cwd: cwd.map(str::to_string),
+                owner_user: None,
+            },
+            content: HandoffContent {
+                summary: summary.to_string(),
+                open_questions: vec![],
+                next_steps: vec![],
+                files_touched: vec![],
+            },
+            lifecycle: HandoffLifecycle {
+                state: HandoffState::Open,
+                created_at: jiff::Timestamp::from_microsecond(t).unwrap(),
+                accepted_by: None,
+                accepted_at: None,
+                accepted_by_session: None,
+                accepted_by_user: None,
+            },
         }
     }
 
     fn pick(candidates: Vec<Handoff>, cwd: Option<&str>) -> String {
-        super::select_open_handoff(candidates, cwd).map_or_else(|| "—".to_string(), |h| h.summary)
+        super::select_open_handoff(candidates, cwd)
+            .map_or_else(|| "—".to_string(), |h| h.content.summary)
     }
 
     #[test]
@@ -7890,7 +7909,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(handoff.summary, "right project");
+        assert_eq!(handoff.content.summary, "right project");
     }
 
     #[tokio::test]
@@ -7958,6 +7977,7 @@ mod tests {
                 .await
                 .unwrap()
                 .unwrap()
+                .lifecycle
                 .state,
             HandoffState::Expired,
             "a newer auto from the exact cwd must bound pre-accept accumulation"
@@ -7977,7 +7997,10 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(selected.id, newest_parent, "newest eligible auto must win");
+        assert_eq!(
+            selected.scope.id, newest_parent,
+            "newest eligible auto must win"
+        );
 
         // A manual handoff appearing between selection and acceptance must not
         // be swept by automatic-handoff cleanup.
@@ -8001,7 +8024,7 @@ mod tests {
         store
             .writer
             .accept_handoff(ai_memory_core::HandoffAcceptance {
-                handoff_id: selected.id,
+                handoff_id: selected.scope.id,
                 workspace_id: ws,
                 project_id: proj,
                 accepting_agent: AgentKind::Codex,
@@ -8020,6 +8043,7 @@ mod tests {
                 .await
                 .unwrap()
                 .unwrap()
+                .lifecycle
                 .state,
             HandoffState::Expired
         );
@@ -8030,6 +8054,7 @@ mod tests {
                 .await
                 .unwrap()
                 .unwrap()
+                .lifecycle
                 .state,
             HandoffState::Accepted
         );
@@ -8041,6 +8066,7 @@ mod tests {
                     .await
                     .unwrap()
                     .unwrap()
+                    .lifecycle
                     .state,
                 HandoffState::Open
             );

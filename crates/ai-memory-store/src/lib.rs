@@ -5120,7 +5120,7 @@ mod tests {
                 .latest_open_handoff(ws, proj, None, ai_memory_core::OwnerFilter::Any)
                 .await
                 .unwrap()
-                .map(|handoff| handoff.id),
+                .map(|handoff| handoff.scope.id),
             Some(second_handoff),
             "a failed managed claim must roll back the handoff transition"
         );
@@ -5184,6 +5184,7 @@ mod tests {
                     .await
                     .unwrap()
                     .unwrap()
+                    .lifecycle
                     .state,
                 HandoffState::Open,
                 "a rejected managed claim must not accept or expire automatic handoffs"

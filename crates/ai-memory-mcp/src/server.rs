@@ -3515,7 +3515,7 @@ impl AiMemoryServer {
                 let claimed = self
                     .writer
                     .accept_handoff(ai_memory_core::HandoffAcceptance {
-                        handoff_id: h.id,
+                        handoff_id: h.scope.id,
                         workspace_id: ws,
                         project_id: proj,
                         accepting_agent: AgentKind::Other,
@@ -3580,11 +3580,11 @@ impl AiMemoryServer {
                     None,
                 )
             })?;
-        if handoff.state != HandoffState::Open {
+        if handoff.lifecycle.state != HandoffState::Open {
             return ok_json(&serde_json::json!({
                 "handoff_id": handoff_id.to_string(),
                 "cancelled": false,
-                "state": handoff.state.as_str(),
+                "state": handoff.lifecycle.state.as_str(),
             }));
         }
         // Cancelling is scoped the same way as accepting: you can discard your
@@ -9639,6 +9639,86 @@ mod tests {
         assert!(again_text.contains("\"handoff\": null"));
     }
 
+    /// `Handoff` is grouped internally into `HandoffScope`/`HandoffOrigin`/
+    /// `HandoffContent`/`HandoffLifecycle` sub-structs, each `#[serde(flatten)]`ed
+    /// so the wire JSON stays flat. This locks that in: the response must keep
+    /// exactly the pre-grouping key set at `handoff`, with no nested objects.
+    #[tokio::test]
+    async fn memory_handoff_accept_response_json_stays_flat() {
+        let (_tmp, _store, server, _ws, _pj) = setup_server().await;
+        server
+            .memory_handoff_begin(
+                Parameters(HandoffBeginArgs {
+                    summary: "wire-shape probe".into(),
+                    open_questions: vec![],
+                    next_steps: vec![],
+                    files_touched: vec![],
+                    cwd: Some("/tmp/aim-wire".into()),
+                    project: None,
+                    workspace: None,
+                    shared: None,
+                }),
+                OptionalParts(test_parts_default()),
+            )
+            .await
+            .unwrap();
+        let accept = server
+            .memory_handoff_accept(
+                Parameters(HandoffAcceptArgs {
+                    cwd: Some("/tmp/aim-wire".into()),
+                    project: None,
+                    workspace: None,
+                    any_owner: None,
+                }),
+                OptionalParts(test_parts_default()),
+            )
+            .await
+            .unwrap();
+        let accept_text = accept
+            .content
+            .first()
+            .and_then(|c| c.as_text())
+            .map(|t| t.text.clone())
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_str(&accept_text).unwrap();
+        let handoff = value
+            .get("handoff")
+            .and_then(serde_json::Value::as_object)
+            .expect("handoff must be a flat JSON object");
+
+        let mut keys: Vec<&str> = handoff.keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        let mut expected = vec![
+            "id",
+            "workspace_id",
+            "project_id",
+            "from_session_id",
+            "from_agent",
+            "to_agent",
+            "cwd",
+            "summary",
+            "open_questions",
+            "next_steps",
+            "files_touched",
+            "state",
+            "created_at",
+            "accepted_by",
+            "accepted_at",
+            "accepted_by_session",
+            "owner_user",
+            "accepted_by_user",
+        ];
+        expected.sort_unstable();
+        assert_eq!(
+            keys, expected,
+            "handoff sub-struct grouping must not change the flat MCP wire shape"
+        );
+        assert!(
+            handoff.values().all(|v| !v.is_object()),
+            "no field may have become a nested object"
+        );
+    }
+
     #[tokio::test]
     async fn handoff_begin_caps_manual_text_after_scrub() {
         let (_tmp, _store, server, _ws, _pj) = setup_server().await;
@@ -9928,7 +10008,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(stored.state, HandoffState::Expired);
+        assert_eq!(stored.lifecycle.state, HandoffState::Expired);
     }
 
     #[tokio::test]
@@ -10004,6 +10084,7 @@ mod tests {
                 .await
                 .unwrap()
                 .unwrap()
+                .lifecycle
                 .state,
             HandoffState::Open,
         );

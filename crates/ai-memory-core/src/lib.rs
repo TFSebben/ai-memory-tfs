@@ -45,7 +45,10 @@ pub use actor::{
     skip_admission_chain_for,
 };
 pub use error::{MemoryError, MemoryResult};
-pub use handoff::{Handoff, HandoffAcceptance, HandoffState, NewHandoff};
+pub use handoff::{
+    Handoff, HandoffAcceptance, HandoffContent, HandoffLifecycle, HandoffOrigin, HandoffScope,
+    HandoffState, NewHandoff,
+};
 pub use ids::{
     AgentKind, AutoImproveProposalId, AutoImproveRunId, EntityId, HandoffId, ManagedRunId,
     ObservationId, PageFeedbackId, PageId, PagePath, ProjectId, SessionId, UserId, WorkspaceId,
