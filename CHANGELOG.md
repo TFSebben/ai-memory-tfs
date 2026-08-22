@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Made non-FTS search hits describe the page instead of repeating its
+  heading. Only the FTS5 path built a real excerpt (`snippet(pages_fts, ...)`,
+  centred on the matched terms); the vector, entity-match, graph-neighbour and
+  recency paths had no matched term to centre on and returned
+  `substr(body, 1, 240)` — on a compiled page that is the `# Title` line plus
+  the following structural heading, which duplicates the `title` field already
+  present on the hit and gives an agent nothing to decide a follow-up
+  `memory_read_page` on. Measured against a live instance over 100 real pages
+  (55 of them substantive, the rest near-empty session stubs), 53% of
+  substantive descriptors opened by repeating the title verbatim, and the
+  median page spent its 240-character budget on 35 characters of prose. Those
+  six queries now prefer the page's own frontmatter `summary`, and otherwise
+  fill the budget from the page's own text, skipping structural lines,
+  `- **key:** value` metadata bullets, and any line that merely repeats the
+  title. On the same sample title repetition drops to 0%, and 71% of session
+  pages land on the prompts after the first — the part the title does not
+  already show. The FTS path is unchanged, response shape is unchanged, and no
+  schema migration is involved.
+
 ## [1.31.0] - 2026-08-22
 
 ### Fixed
