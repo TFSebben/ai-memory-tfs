@@ -1924,6 +1924,11 @@ image, re-stages hook scripts under
 prints how to restart the server container so the new binary is used.
 Re-running `install-hooks --apply` remains idempotent: ai-memory
 replaces only the hook entries it owns and leaves unrelated hooks alone.
+When a Compose file is found, the wrapper first verifies that its project owns
+the running `ai-memory` container. A standalone container is never handed to an
+unrelated Compose project just because its file occupies a conventional path;
+the wrapper instead writes the inspected standalone recreation script for
+review, preserving the existing `/data` mount and other runtime options.
 
 Set `AI_MEMORY_NO_VERSION_CHECK=1` to silence the daily check. To pin wrapper
 self-upgrades to a fork or tagged release, set `AI_MEMORY_WRAPPER_URL=<url>`;

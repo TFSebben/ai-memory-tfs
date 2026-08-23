@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.31.1] - 2026-08-23
 
 ### Fixed
+- `ai-memory upgrade` now verifies that a discovered Compose project actually
+  owns the running `ai-memory` container before invoking `docker compose up`.
+  A standalone `docker run` install could previously be mistaken for a Compose
+  deployment merely because an unrelated `docker-compose.yml` existed in a
+  conventional search path; Compose then failed with a container-name conflict
+  and the safe standalone recreation-script fallback was skipped. Unowned
+  containers now use that existing fallback, preserving their inspected ports,
+  mounts, restart policy, command, and operator-set environment. (#469)
 - The Windows Docker wrapper's thin-client commands now reach a
   loopback-published server instead of failing with `Connection refused (os
   error 111)`. `ai-memory status`, `search`, `bootstrap` and every other
