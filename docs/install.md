@@ -1217,8 +1217,11 @@ mise use -g github:akitaonrails/ai-memory
 This uses [mise's GitHub backend](https://mise.jdx.dev/dev-tools/backends/github.html),
 which downloads the release archive matching your OS/arch
 (`ai-memory-linux-x86_64.tar.gz`, `ai-memory-macos-aarch64.tar.gz`, etc.),
-verifies its checksum, GitHub artifact attestation, and SLSA provenance, then
-extracts it and puts `ai-memory` on `PATH`. No dedicated mise plugin or
+verifies its checksum against the published `.sha256` sidecar, then extracts
+it and puts `ai-memory` on `PATH`. (mise can also check GitHub artifact
+attestation and SLSA provenance where a project publishes them; ai-memory's
+release workflow does not emit either today, so only the checksum applies.)
+No dedicated mise plugin or
 registry entry is required — the backend works against any repo whose
 release assets follow this naming convention. By default mise also holds back
 the very newest release for a short safety window
