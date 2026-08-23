@@ -2467,6 +2467,128 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn linked_neighbor_hit_describes_the_page_not_its_heading() {
+        let tmp = TempDir::new().unwrap();
+        let store = Store::open(tmp.path()).unwrap();
+        let ws = store
+            .writer
+            .get_or_create_workspace("default")
+            .await
+            .unwrap();
+        let proj = store
+            .writer
+            .get_or_create_project(ws, "ai-memory", None)
+            .await
+            .unwrap();
+
+        // A compiled page opens with its title and a structural heading. The
+        // graph-neighbour path has no matched term to centre an excerpt on,
+        // so before the descriptor fix its snippet was exactly this preamble.
+        let body = concat!(
+            "# Session 2026-04-20\n",
+            "\n",
+            "## Decisions\n",
+            "\n",
+            "Dropped the retry queue because the writer actor already serialises.\n",
+        );
+        store
+            .writer
+            .upsert_page(sample_page(ws, proj, "target.md", body))
+            .await
+            .unwrap();
+        let mut source = sample_page(ws, proj, "source.md", "needle source content");
+        source.links = vec![PagePath::new("target.md").unwrap().into()];
+        store.writer.upsert_page(source).await.unwrap();
+
+        let hits = store
+            .reader
+            .hybrid_search(
+                ws,
+                proj,
+                "needle".into(),
+                None,
+                String::new(),
+                String::new(),
+                0,
+                10,
+                None,
+            )
+            .await
+            .unwrap();
+        let neighbor = hits
+            .iter()
+            .find(|h| h.path.as_str() == "target.md")
+            .expect("linked neighbor should be included");
+        assert_eq!(
+            neighbor.snippet,
+            "Dropped the retry queue because the writer actor already serialises.",
+            "neighbour snippet should describe the page, not repeat its heading"
+        );
+    }
+
+    #[tokio::test]
+    async fn frontmatter_summary_wins_over_the_body_lede() {
+        let tmp = TempDir::new().unwrap();
+        let store = Store::open(tmp.path()).unwrap();
+        let ws = store
+            .writer
+            .get_or_create_workspace("default")
+            .await
+            .unwrap();
+        let proj = store
+            .writer
+            .get_or_create_project(ws, "ai-memory", None)
+            .await
+            .unwrap();
+
+        let mut page = sample_page(ws, proj, "curated.md", "Body prose that loses.");
+        page.frontmatter_json = serde_json::json!({ "summary": "Curated one-liner." });
+        store.writer.upsert_page(page).await.unwrap();
+
+        let hits = store
+            .reader
+            .recent_pages_for_project(ws, proj, 10)
+            .await
+            .unwrap();
+        let hit = hits
+            .iter()
+            .find(|h| h.path.as_str() == "curated.md")
+            .expect("page should be listed");
+        assert_eq!(hit.snippet, "Curated one-liner.");
+    }
+
+    #[tokio::test]
+    async fn blank_frontmatter_summary_falls_back_to_the_body_lede() {
+        let tmp = TempDir::new().unwrap();
+        let store = Store::open(tmp.path()).unwrap();
+        let ws = store
+            .writer
+            .get_or_create_workspace("default")
+            .await
+            .unwrap();
+        let proj = store
+            .writer
+            .get_or_create_project(ws, "ai-memory", None)
+            .await
+            .unwrap();
+
+        let mut page = sample_page(ws, proj, "blank.md", "Body prose that wins.");
+        page.frontmatter_json = serde_json::json!({ "summary": "   " });
+        store.writer.upsert_page(page).await.unwrap();
+
+        let hits = store
+            .reader
+            .recent_pages_for_project(ws, proj, 10)
+            .await
+            .unwrap();
+        let hit = hits
+            .iter()
+            .find(|h| h.path.as_str() == "blank.md")
+            .expect("page should be listed");
+        assert_eq!(hit.snippet, "Body prose that wins.");
+    }
+
+    #[tokio::test]
     async fn hybrid_search_includes_linked_neighbors() {
         let tmp = TempDir::new().unwrap();
         let store = Store::open(tmp.path()).unwrap();
