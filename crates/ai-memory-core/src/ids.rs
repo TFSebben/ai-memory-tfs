@@ -106,6 +106,33 @@ impl PagePath {
     ///
     /// # Errors
     /// Returns [`MemoryError::InvalidPagePath`] when the input is empty or
+    /// Reject a path that cannot be materialised and checkpointed on every
+    /// supported platform.
+    ///
+    /// Deliberately **not** part of [`PagePath::new`]. Persisted rows are
+    /// reconstructed through that constructor on every read
+    /// (`reader.rs` does so in the recency, search, vector and graph
+    /// queries), so tightening it would make any already-stored
+    /// non-portable page unreadable — and because those are list queries,
+    /// one such page would break a whole listing rather than just itself.
+    /// The rule therefore applies where a *new* path enters the system.
+    ///
+    /// The rule is the same on every platform on purpose. A wiki authored
+    /// on Linux is expected to be usable on Windows by the same release;
+    /// making the check platform-conditional would let a Linux session
+    /// create pages a Windows session cannot read, which is the defect
+    /// being fixed rather than a fix for it (#462).
+    ///
+    /// # Errors
+    /// Returns [`MemoryError::InvalidPagePath`] naming the offending
+    /// component and the reason.
+    pub fn ensure_portable(&self) -> Result<(), MemoryError> {
+        for component in self.as_str().split('/') {
+            ensure_portable_component(component, self.as_str())?;
+        }
+        Ok(())
+    }
+
     /// contains a path component that would escape or alias the wiki root.
     pub fn new(raw: impl Into<String>) -> Result<Self, MemoryError> {
         let raw = raw.into();
@@ -576,5 +603,128 @@ mod tests {
             serde_json::from_str::<AgentKind>(&devin).unwrap(),
             AgentKind::Devin
         );
+    }
+}
+
+/// Names Windows reserves regardless of extension: `CON.md` is still the
+/// console device.
+const DOS_DEVICE_NAMES: &[&str] = &[
+    "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
+    "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+];
+
+/// Characters Windows refuses in a filename. `/` is the separator and is
+/// handled by the caller; `\\` and a drive prefix are already rejected by
+/// [`PagePath::new`].
+const WINDOWS_RESERVED_CHARS: &[char] = &['<', '>', ':', '"', '|', '?', '*'];
+
+fn ensure_portable_component(component: &str, full: &str) -> Result<(), MemoryError> {
+    let invalid = |reason: &str| {
+        Err(MemoryError::InvalidPagePath(format!(
+            "page path {full:?}: component {component:?} {reason}"
+        )))
+    };
+
+    if let Some(bad) = component
+        .chars()
+        .find(|c| WINDOWS_RESERVED_CHARS.contains(c))
+    {
+        return invalid(&format!(
+            "contains {bad:?}, which Windows refuses in a filename"
+        ));
+    }
+    if let Some(bad) = component.chars().find(|c| (*c as u32) < 0x20) {
+        return invalid(&format!(
+            "contains control character U+{:04X}, which is not a legal filename byte",
+            bad as u32
+        ));
+    }
+    // A trailing dot or space is silently stripped by the Win32 layer, so the
+    // file lands under a different name than the one recorded in the index.
+    if component.ends_with('.') || component.ends_with(' ') {
+        return invalid("ends with a dot or space, which Windows strips on create");
+    }
+    // Device names match on the stem, so `CON`, `CON.md` and `con.markdown`
+    // are all the console.
+    let stem = component.split('.').next().unwrap_or(component);
+    if DOS_DEVICE_NAMES.contains(&stem.to_ascii_lowercase().as_str()) {
+        return invalid(&format!(
+            "uses the reserved DOS device name {stem:?}; Windows resolves it to a device, not a file"
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod portable_page_path_tests {
+    use super::PagePath;
+
+    /// Every shape #462 reproduced on native Windows. Each either fails late
+    /// with a 500, or writes but cannot be checkpointed by libgit2 and cannot
+    /// be deleted through the normal API — silent partial state, which is
+    /// worse than a clean rejection.
+    #[test]
+    fn windows_hostile_paths_are_rejected() {
+        for raw in [
+            "CON.md",
+            "notes/aux.md",
+            "notes/NUL.md",
+            "notes/com1.md",
+            "notes/LPT9.txt",
+            "notes/trailing./x.md",
+            "notes/trailing /x.md",
+            "notes/end.md.",
+            "notes/end.md ",
+            "notes/a<b.md",
+            "notes/a>b.md",
+            "notes/a\"b.md",
+            "notes/a|b.md",
+            "notes/a?b.md",
+            "notes/a*b.md",
+            "notes/a:b.md",
+            "notes/a\u{1}b.md",
+        ] {
+            let path = PagePath::new(raw).expect("still constructible: reads must keep working");
+            assert!(
+                path.ensure_portable().is_err(),
+                "{raw:?} is not portable and must be refused at write time"
+            );
+        }
+    }
+
+    /// The rule must not reject ordinary pages. `con` is only reserved as a
+    /// whole component, so `concepts/` and `icon.md` are fine.
+    #[test]
+    fn ordinary_paths_stay_writable() {
+        for raw in [
+            "notes/portable.md",
+            "concepts/no-impl-without-test.md",
+            "sessions/2026-08-22.md",
+            "notes/icon.md",
+            "notes/console.md",
+            "prn-notes/aux-iliary.md",
+            "a/b/c/deep.md",
+            "notes/dot.in.middle.md",
+            "notes/UPPER.MD",
+        ] {
+            let path = PagePath::new(raw).expect("valid path");
+            assert!(
+                path.ensure_portable().is_ok(),
+                "{raw:?} is portable and must stay writable"
+            );
+        }
+    }
+
+    /// Reads must keep working for pages already stored under a
+    /// non-portable name: `PagePath::new` stays tolerant so a listing does
+    /// not break on one bad row.
+    #[test]
+    fn existing_non_portable_pages_remain_constructible() {
+        for raw in ["CON.md", "notes/a|b.md", "notes/trailing./x.md"] {
+            assert!(
+                PagePath::new(raw).is_ok(),
+                "{raw:?} must still construct so persisted rows stay readable"
+            );
+        }
     }
 }

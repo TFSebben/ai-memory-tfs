@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Page paths that cannot be materialised on every supported platform are now
+  refused at write time instead of failing late (#462). `PagePath` accepted
+  DOS device names (`CON.md`, `aux.md`), components ending in a dot or space,
+  the characters `< > : " | ? *`, and control characters. On native Windows
+  some of those failed with a generic HTTP 500, while others were written
+  successfully but could not be checkpointed by libgit2 or deleted through the
+  normal API — silent partial state, which is worse than a clean rejection.
+  The check runs in `Wiki::write_page`, the single funnel every page creation
+  passes through, and returns an error naming the offending component and the
+  reason. It is deliberately **not** in `PagePath::new`: persisted rows are
+  reconstructed through that constructor on every read, so tightening it would
+  make an already-stored non-portable page unreadable and break the whole
+  listing it appears in. The rule is identical on every platform, so a wiki
+  authored on Linux stays usable on Windows.
 - Made non-FTS search hits describe the page instead of repeating its
   heading. Only the FTS5 path built a real excerpt (`snippet(pages_fts, ...)`,
   centred on the matched terms); the vector, entity-match, graph-neighbour and
