@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The Windows Docker wrapper's thin-client commands now reach a
+  loopback-published server instead of failing with `Connection refused (os
+  error 111)`. `ai-memory status`, `search`, `bootstrap` and every other
+  thin-client command runs inside a short-lived helper container, where the
+  CLI's default `http://127.0.0.1:49374` resolves to that helper rather than
+  to the Windows host, so a healthy `docker run -p 127.0.0.1:49374:49374`
+  server was unreachable from the wrapper while `curl` from PowerShell worked.
+  The wrapper now injects `AI_MEMORY_SERVER_URL=http://host.docker.internal:49374`
+  for those commands, matching what the POSIX wrapper has done on macOS since
+  (#107) — Docker Desktop gives Linux containers no host networking on either
+  platform. `install-mcp`, `install-hooks` and `setup-agent` still render
+  `http://127.0.0.1:49374` into host-side agent config, because
+  `host.docker.internal` does not resolve on the Windows host, and an explicit
+  `AI_MEMORY_SERVER_URL` (homelab or remote server) is still honoured. (#464)
+
 ## [1.31.0] - 2026-08-22
 
 ### Fixed
