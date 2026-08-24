@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.32.0] - 2026-08-24
+
 ### Added
 - Gave session pages a `summary` in their frontmatter, which the retrieval
   layer already preferred over the page body when describing a non-FTS hit.
@@ -3704,7 +3706,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidator used server startup default project instead of the
   session's actual project.
 
-[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.31.1...HEAD
+[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.32.0...HEAD
+[1.32.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.32.0
 [1.31.1]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.31.1
 [1.31.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.31.0
 [1.30.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.30.0
