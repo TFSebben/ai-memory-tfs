@@ -93,6 +93,11 @@ priors are at the [bottom](#influences-and-prior-art).
 - **Per-repository capture exclusions.** A nearest-marker `[capture]`
   `ignore_paths` policy drops matching recognized file-tool events before they
   reach the local spool or server. See [the capture policy reference](docs/marker-file.md#capture-exclusions).
+- **Opt-in capture scope.** `install-hooks --capture-mode allowlist` inverts
+  the default so a repository without a marker emits no lifecycle event at
+  all, dropped by the native hook before the spool. Forgetting a marker then
+  costs recall rather than confidentiality. Enforced by native `ai-memory
+  hook` commands only — see [allowlist mode](docs/marker-file.md#allowlist-mode-the-marker-as-an-opt-in).
 - **Optional per-operator memory slots.** On shared servers,
   `[slots] per_user = true` keeps engine-written `_slots/` context in a bounded
   namespace derived from the authenticated operator. Session briefs and

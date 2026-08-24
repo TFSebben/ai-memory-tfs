@@ -95,6 +95,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `capture_mode`, `marker_present` and `admits_capture` so an opt-out can be
   verified without sending anything. Default behaviour is unchanged, and
   `--capture-mode denylist` restores it.
+- Documented allowlist mode in the README feature list beside the existing
+  per-repository capture exclusions, so the two capture controls are
+  discoverable from the same place (#446).
 - Corrected the allowlist-mode documentation, which claimed "every agent's
   hook honours it". The gate runs inside the native `ai-memory hook` binary
   before the spool write, so script-based installs — the
