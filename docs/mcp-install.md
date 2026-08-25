@@ -792,6 +792,36 @@ rejects root-level `anyOf`/`oneOf`/`allOf` combinators — including the
 with flat schemas; every other client keeps receiving the upstream schemas
 unchanged.
 
+> **Do not register ai-memory with Kimi's own `mcp add`.** Kimi Code's
+> documented command —
+>
+> ```bash
+> kimi mcp add --transport http ai-memory http://127.0.0.1:49374/mcp
+> ```
+>
+> writes the plain URL, with no `?flavor=moonshot`. The server then serves
+> the upstream schemas, Moonshot rejects `memory_read_page`'s root-level
+> `anyOf`, and **every model turn fails with a 400** — including turns that
+> use no tools at all, because tool schemas ship with each request. Use
+> `ai-memory install-mcp --client kimi-code --apply` instead, which writes
+> the flavored URL for you.
+>
+> The failure is unusually hard to attribute: `kimi mcp test ai-memory`
+> **passes**, because it only lists tools and never sends them upstream. The
+> server looks healthy while every real turn dies.
+>
+> Already registered that way? Either re-run `install-mcp` as above, or set
+> the server-side floor and leave the client entry alone:
+>
+> ```bash
+> AI_MEMORY_STRIP_ROOT_COMBINATORS=true   # or `strip_root_combinators = true`
+> ```
+>
+> That serves the restricted dialect on every `tools/list` regardless of the
+> `?flavor=` marker, so any strict client that skips the marker is covered —
+> not just Kimi. A request's marker can only raise the dialect further, never
+> lower it. Reported in #474.
+
 **Config file (hooks):** `~/.kimi-code/config.toml` (same `$KIMI_CODE_HOME`
 base). Kimi Code stores hooks as `[[hooks]]` array entries in the same TOML
 file that holds its provider/model settings; `install-hooks` merges

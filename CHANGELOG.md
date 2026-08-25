@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Docs
+- Documented why registering ai-memory through Kimi Code's own
+  `kimi mcp add` breaks every model turn: that command writes the plain
+  `/mcp` URL with no `?flavor=moonshot`, so Moonshot rejects
+  `memory_read_page`'s root-level `anyOf` and fails the request — including
+  requests that use no tools, since schemas ship with each one. `kimi mcp
+  test` passes regardless because it never sends schemas upstream, which
+  makes the server look healthy. Records both escapes: re-run `install-mcp
+  --client kimi-code`, or set `strip_root_combinators` server-side to cover
+  any strict client that skips the marker. Reported by @LeandroCorsoOrion
+  (#474).
 - Documented the `os error 4551` build failure on Windows machines with Smart
   App Control / App Control for Business enforced. Cargo compiles each
   crate's `build.rs` into an unsigned executable under `target\debug\build\`
