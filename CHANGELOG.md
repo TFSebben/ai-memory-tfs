@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Stopped the scaffolding filter discarding terse prompts. The identifier
+  branch added in #484 fired on any single token carrying a digit and a
+  hyphen, underscore or bracket, which is the shape of a bare model id and
+  equally the shape of `pr-477`, `issue-484` or `commit-a0bc43d`: measured
+  against the two populations, it matched 10 of 10 model ids and 7 of 11
+  plausible terse references, so a page could lose a real title. The class is
+  now excluded at its source instead — `derive_title` skips `SessionStart`
+  outright, the only kind whose title `best_title_hint` fills from the
+  harness's `model` field — and the branch is gone. That also excludes the
+  router's default `title_hint.unwrap_or(kind)`, the literal `session-start`
+  written whenever a harness sends neither `model` nor `title`. The trade is
+  narrower than a shape rule and stated as such: a model id a user *typed* is
+  now kept, because at that point it is what they wrote. Where the prompts
+  are unusable a page falls to the next observation title, which the router
+  defaults to the observation's own kind, so `Session {id}` is reached only
+  by a session carrying nothing else at all — measured over 332 real sessions
+  it never was, and 5 of them landed on `tool file` / `tool non-file` against
+  327 keeping a real title. `looks_like_scaffolding` is re-exported from
+  `ai-memory-core`, so its narrowing is a public-API behaviour change even
+  though `derive_title` is its only caller in tree. (#484)
+
 ### Docs
 - Documented why registering ai-memory through Kimi Code's own
   `kimi mcp add` breaks every model turn: that command writes the plain
