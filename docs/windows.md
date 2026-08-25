@@ -221,6 +221,27 @@ target\debug\ai-memory.exe init
 target\debug\ai-memory.exe serve --transport http --bind 127.0.0.1:49374
 ```
 
+### If the build fails with `os error 4551`
+
+On a machine with **Smart App Control** or **App Control for Business**
+enforced, `cargo build` can fail before compiling anything of ours:
+
+```
+error: failed to run custom build command for `proc-macro2`
+  An Application Control policy has blocked this file. (os error 4551)
+```
+
+This is not a toolchain problem and re-installing Rust will not fix it.
+Cargo compiles each crate's `build.rs` into an unsigned executable under
+`target\debug\build\`, and those policies block unsigned binaries from
+running out of user-writable directories. `proc-macro2` and
+`icu_properties_data` are usually the first to hit it because they build
+early.
+
+Add a path exclusion for the checkout's `target` directory (or build inside
+a location your policy already trusts). Reported by @CaioCoelhoChaves while
+running the measurements in #478.
+
 For release validation from Git Bash on native Windows, use the same checkout
 with the Rust MSVC toolchain active:
 

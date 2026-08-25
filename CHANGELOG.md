@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Docs
+- Documented the `os error 4551` build failure on Windows machines with Smart
+  App Control / App Control for Business enforced. Cargo compiles each
+  crate's `build.rs` into an unsigned executable under `target\debug\build\`
+  and those policies block it, so the build dies on `proc-macro2` before
+  reaching any ai-memory code and looks like a broken toolchain. Reported by
+  @CaioCoelhoChaves (#478).
+
 ## [1.32.1] - 2026-08-25
 
 ### Fixed
