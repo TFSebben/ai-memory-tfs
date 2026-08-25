@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.32.1] - 2026-08-25
+
 ### Fixed
 - `memory_forget_sweep`'s tool description claimed "Semantic / procedural /
   pinned pages are exempt" without qualification. That is true of the decay
@@ -3747,7 +3749,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidator used server startup default project instead of the
   session's actual project.
 
-[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.32.0...HEAD
+[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.32.1...HEAD
+[1.32.1]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.32.1
 [1.32.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.32.0
 [1.31.1]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.31.1
 [1.31.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.31.0
