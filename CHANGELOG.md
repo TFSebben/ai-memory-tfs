@@ -239,6 +239,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read identically whether hooks are broken or a repository simply never opted
   in — the exact ambiguity those counters were added to remove (#428, #446).
 
+### Fixed
+- Prevented stored Markdown from automatically fetching external image URLs
+  when viewed in the web UI, while preserving clickable external links and
+  same-origin relative images (#491).
+
 ### Docs
 - Documented the order of magnitude reported for lifecycle-hook overhead,
   including the fact that a completed tool call normally pays for both pre- and
