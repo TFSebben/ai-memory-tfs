@@ -7,12 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
 ### Added
 - Generated `sessions/<id>.md` pages now surface the originating harness as
   `agent` frontmatter alongside `session_id`. The value comes from the
   persisted session row, so LLM rewrites, compaction checkpoints, spool
   drains, and superseding versions do not mistake the later writer for the
   origin; manual page writes remain unattributed. (#494)
+- PowerShell compatibility hooks no longer assign to a local `$home` variable.
+  PowerShell names are case-insensitive, so that collided with the automatic
+  read-only `$HOME` variable and emitted `VariableNotWritable` for every hook
+  payload carrying a cwd. The marker-boundary helper now uses `$userHome`, with
+  native Windows and static shell regressions covering the error stream and
+  reserved-name contract (#498).
 
 ## [1.32.2] - 2026-08-26
 
