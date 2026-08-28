@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   origin; manual page writes remain unattributed. (#494)
 
 ### Fixed
+- Prevented stored Markdown from automatically fetching external image URLs
+  when viewed in the web UI, while preserving clickable external links and
+  same-origin relative images (#491).
 - Made managed routing `SKILL.md` payloads byte-identical across release
   platforms. Windows builds previously embedded CRLF from the runner checkout
   while Linux and macOS builds embedded LF, so one tag returned different
@@ -253,10 +256,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read identically whether hooks are broken or a repository simply never opted
   in — the exact ambiguity those counters were added to remove (#428, #446).
 
-### Fixed
-- Prevented stored Markdown from automatically fetching external image URLs
-  when viewed in the web UI, while preserving clickable external links and
-  same-origin relative images (#491).
 
 ### Docs
 - Documented the order of magnitude reported for lifecycle-hook overhead,
