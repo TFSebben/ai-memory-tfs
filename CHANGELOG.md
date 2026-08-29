@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.35.0] - 2026-08-29
+
 ### Added
 - `ai-memory handoffs` lists the open cross-agent handoffs for a project,
   oldest first, with the id `memory_handoff_cancel` requires. A backlog was
@@ -3958,7 +3960,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidator used server startup default project instead of the
   session's actual project.
 
-[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.34.0...HEAD
+[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.35.0...HEAD
+[1.35.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.35.0
 [1.34.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.34.0
 [1.33.1]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.33.1
 [1.33.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.33.0
