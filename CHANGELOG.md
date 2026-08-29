@@ -18,6 +18,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so an operator can see it and decide (#513).
 
 ### Fixed
+- Documented `ai-memory handoffs`. It shipped listed only in the
+  ARCHITECTURE subcommand block, which a guard test enforces — so the command
+  satisfied the check for being *present* without anyone being told what it
+  does. README and the MCP tool table now name it beside
+  `memory_handoff_cancel`, which is the tool it exists to make usable.
+- Made every "how long ago" in the CLI read the same way. Four separate
+  renderers had accumulated — `show`, `run`, `workstreams` and `handoffs` —
+  so the same elapsed time appeared as `3 hours ago`, `3h ago` or `74 days
+  ago` depending on which command produced it. They now share one helper, and
+  a long-idle native session reads `2 months ago` in `run` as it already did
+  elsewhere. `status`'s spool line is deliberately untouched: it renders a
+  duration (`oldest: 2h 10m`), not an "ago", and answers a different question.
 - `install-mcp --client antigravity-cli` wrote to `~/.gemini/antigravity-cli/mcp_config.json`,
   but the Antigravity CLI documents its global MCP config at
   `~/.gemini/config/mcp_config.json`; the `antigravity-cli/` directory is its
