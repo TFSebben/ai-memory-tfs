@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.36.0] - 2026-08-29
+
 ### Added
 - Bounded raw-observation retention as an opt-in fourth pass of the M8 forget
   sweep, disabled by default. Nothing in the tree could delete an `observations`
@@ -4037,7 +4039,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidator used server startup default project instead of the
   session's actual project.
 
-[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.35.0...HEAD
+[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.36.0...HEAD
+[1.36.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.36.0
 [1.35.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.35.0
 [1.34.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.34.0
 [1.33.1]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.33.1
