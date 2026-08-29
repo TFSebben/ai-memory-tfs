@@ -14,7 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   internal data dir and only holds an internal copy of the file. The default
   path now targets `~/.gemini/config/mcp_config.json`, which also matches the
   hooks integration (`~/.gemini/config/hooks.json`) (#510).
-
+- `install-hooks --agent codex --apply` produced a Windows command every Codex
+  hook rejected. Codex evaluates its `hooks.json` command strings with
+  PowerShell, where a quoted path in command position is a string expression
+  rather than an invocation, so each hook exited 1 with a ParserError and
+  captured nothing. The command now carries PowerShell's `&` call operator.
+  Scoped to Codex deliberately: `&` separates commands under cmd.exe, which is
+  what Claude Code's runner uses, so applying it everywhere would break the
+  integration that works today. A rendering test pins both directions, and
+  `uninstall` still recognises the new form (#515).
 ## [1.34.0] - 2026-08-28
 
 ### Added
