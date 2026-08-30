@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.37.0] - 2026-08-30
+
 ### Added
 - Added `GET /admin/audit-log`, a read-only paginated reader for the existing
   `audit_log` table. Events resolve workspace, project, page path, and author
@@ -4073,7 +4075,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidator used server startup default project instead of the
   session's actual project.
 
-[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.36.0...HEAD
+[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v1.37.0...HEAD
+[1.37.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.37.0
 [1.36.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.36.0
 [1.35.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.35.0
 [1.34.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v1.34.0
