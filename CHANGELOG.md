@@ -49,6 +49,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   earlier backups still contain it. `docs/lifecycle-ops.md` states that
   boundary in a table so it is not inferred from the command name.
 
+### Fixed
+- The hook drain no longer stalls the whole spool behind one undeliverable
+  entry. A spooled event carries the URL it was captured against, so a spool
+  can hold entries addressed to a port nothing listens on any more — an old
+  `--bind`, or a server that came back on a different port. The drain stopped
+  at the first such entry, charged it a single retry attempt and returned, so
+  every deliverable event queued behind it was never attempted. With a dead
+  head of queue this is not a delay but silent loss: those events sat until the
+  7-day spool window discarded them undelivered, while the drain reported the
+  same `0 sent, N queued, 0 dropped` a healthy idle pass reports.
+
+  A transport failure is now distinguished from a server rejection
+  (`PostOutcome::Unreachable` / `BatchOutcome::Unreachable`). When an endpoint
+  cannot be reached the drain charges one attempt to the entry it actually
+  tried, records the address, skips its remaining siblings without charging
+  them for an attempt they never got, and carries on to entries addressed
+  somewhere that answers. A total outage behaves exactly as before — every
+  entry shares the one dead endpoint, so the pass still ends having burnt a
+  single attempt. Reported by @rob-prado, who traced it to the head of their
+  own 7,949-entry spool being 100% dead-port, and by @swhite1122, whose
+  stand-in courier avoided the stall by continuing past failures (#493).
+
+  An entry frozen against a dead **loopback** port is also now retried once
+  against the address in the store's own `config.toml`, so a server that came
+  back on a different port delivers its backlog instead of merely skipping it.
+  Restricted to loopback because a loopback authority can only ever have meant
+  "this machine", making a stale port unambiguous; a remote host is left alone
+  rather than silently re-pointed. The target is read from that file directly
+  and not through the usual config load, which also merges the environment — a
+  drain honouring `AI_MEMORY_SERVER_URL` would send captured events to whatever
+  address happened to be exported into the process that ran it.
+
 ## [1.38.0] - 2026-08-30
 
 ### Added
