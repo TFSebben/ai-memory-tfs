@@ -344,6 +344,7 @@ diagram, crate breakdown, schema notes, and invariants.
 - [`docs/security.md`](docs/security.md) - the full security model.
 - [`docs/research-2026-landscape.md`](docs/research-2026-landscape.md) - how the field looks and where we sit in it.
 - [`docs/ROADMAP-2.0.md`](docs/ROADMAP-2.0.md) - the plan for the 2.0 release, one item at a time.
+- [`docs/benchmarks/`](docs/benchmarks/README.md) - published retrieval-quality numbers with provenance, reproducible from the in-repo harness.
 - [`docs/ROADMAP-2.0.md`](docs/ROADMAP-2.0.md) - the 2.0 plan.
 
 ## Influences and prior art
