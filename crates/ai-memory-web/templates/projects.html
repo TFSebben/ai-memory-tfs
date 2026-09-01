@@ -22,6 +22,21 @@
   </p>
 </div>
 
+{% if let Some(notice) = backup_notice %}
+<div class="mb-6 rounded-md border border-sky-200 dark:border-sky-900/50 bg-sky-50 dark:bg-sky-950/30 p-4 text-sm text-sky-900 dark:text-sky-200">
+  <p class="font-medium mb-1">A pre-migration backup of your memory is still on disk.</p>
+  <p class="text-sky-800 dark:text-sky-300/90 leading-relaxed">
+    Before the OKF format migration ran, the entire data directory was archived to
+    <code class="font-mono text-xs bg-sky-100 dark:bg-sky-900/40 px-1 py-0.5 rounded">{{ notice.archive_path }}</code>
+    ({{ notice.size_human }}, {{ notice.created_at }}).
+  </p>
+  <ul class="mt-2 list-disc list-inside text-sky-800 dark:text-sky-300/90 leading-relaxed">
+    <li><span class="font-medium">Everything looks right?</span> Delete the archive file and this notice disappears.</li>
+    <li><span class="font-medium">Something is missing?</span> Stop the server, unpack the archive over your data directory, and start the old version — see the restore section of <code class="font-mono text-xs bg-sky-100 dark:bg-sky-900/40 px-1 py-0.5 rounded">docs/MIGRATION-2.0.md</code>.</li>
+  </ul>
+</div>
+{% endif %}
+
 {% if projects.is_empty() %}
 <div class="rounded-lg border border-dashed border-slate-300 dark:border-slate-700 p-12 text-center">
   <p class="text-slate-500 dark:text-slate-400 text-sm">

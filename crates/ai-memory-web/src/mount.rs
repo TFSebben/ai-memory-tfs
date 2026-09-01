@@ -605,6 +605,54 @@ mod tests {
         (tmp, router)
     }
 
+    /// The homepage shows the pre-migration backup notice while the
+    /// archive exists, and drops it once the archive is deleted
+    /// (docs/okf.md).
+    #[tokio::test]
+    async fn homepage_backup_notice_tracks_the_archive() {
+        let (tmp, router) = based_web_router("", "/web");
+
+        async fn body_of(router: &axum::Router) -> String {
+            let resp = router
+                .clone()
+                .oneshot(Request::builder().uri("/web").body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+            let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            String::from_utf8(bytes.to_vec()).unwrap()
+        }
+
+        // No receipt → no notice.
+        assert!(!body_of(&router).await.contains("pre-migration backup"));
+
+        // Receipt + archive present → notice with the path.
+        let archive = tmp.path().join("fake-archive.tar.gz");
+        std::fs::write(&archive, b"gz").unwrap();
+        let receipt = ai_memory_wiki::backup::BackupReceipt {
+            archive_path: archive.clone(),
+            size_bytes: 2,
+            entries: 1,
+            created_at: "2026-09-01T00:00:00Z".into(),
+            label: "okf-v0.2".into(),
+        };
+        std::fs::write(
+            tmp.path().join(ai_memory_wiki::backup::BACKUP_RECEIPT_FILE),
+            serde_json::to_vec(&receipt).unwrap(),
+        )
+        .unwrap();
+        let body = body_of(&router).await;
+        assert!(body.contains("pre-migration backup"), "notice missing");
+        assert!(body.contains("fake-archive.tar.gz"), "archive path missing");
+        assert!(body.contains("MIGRATION-2.0.md"), "restore pointer missing");
+
+        // Archive deleted → notice gone, receipt or not.
+        std::fs::remove_file(&archive).unwrap();
+        assert!(!body_of(&router).await.contains("pre-migration backup"));
+    }
+
     #[tokio::test]
     async fn base_path_nests_all_surfaces_and_root_404s() {
         let (_tmp, router) = based_web_router("/wiki", "/web");

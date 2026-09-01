@@ -112,12 +112,26 @@ pub(crate) struct ProjectCard {
     pub href: String,
 }
 
+/// The pre-migration backup notice shown on the homepage while the
+/// archive still exists (docs/okf.md): where it is, how big, and the
+/// two exits — delete it, or restore from it.
+pub(crate) struct BackupNotice {
+    /// Absolute archive path, displayed verbatim.
+    pub archive_path: String,
+    /// Human-readable size (e.g. "12.4 MB").
+    pub size_human: String,
+    /// ISO date of the backup.
+    pub created_at: String,
+}
+
 /// View-model for `GET /`.
 #[derive(Template)]
 #[template(path = "projects.html")]
 pub(crate) struct ProjectsView {
     /// All project cards, sorted by most recently active first.
     pub projects: Vec<ProjectCard>,
+    /// Present while a pre-migration backup archive still exists.
+    pub backup_notice: Option<BackupNotice>,
 }
 
 // ---------------------------------------------------------------------------

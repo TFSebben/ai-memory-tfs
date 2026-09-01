@@ -256,6 +256,14 @@ impl Wiki {
         &self.root
     }
 
+    /// The data directory this wiki lives under (`<data_dir>/wiki` is
+    /// the root, so this is its parent). Used by the web layer to read
+    /// the pre-migration backup receipt.
+    #[must_use]
+    pub fn data_dir(&self) -> &Path {
+        self.root.parent().unwrap_or(&self.root)
+    }
+
     /// Resolve the on-disk root for a project: `<wiki_root>/<ws>/<proj>`.
     /// All page files for this project live under this directory.
     #[must_use]
