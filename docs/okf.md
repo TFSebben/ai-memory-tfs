@@ -78,9 +78,12 @@ Order is fixed; each step gates the next:
    embedding invalidation, no `updated_at` stampede. One git commit
    ("okf-migration") on the wiki, after a pre-migration checkpoint
    commit. Reindex afterwards.
-3. **`wiki_format` generation marker** in the wiki meta manifest;
-   `serve` refuses to open a newer-generation wiki with an older binary
-   (mirror of the DB schema-ahead guard).
+3. **Generation marker**: the migration ships as a `WikiMigration`
+   (tracked in the `wiki_migrations` table), and the runner now refuses
+   to open a wiki whose table records a migration this binary does not
+   know (`NewerWikiFormat`) — the downgrade guard mirroring the DB
+   schema-ahead rule. Scope `_meta.md` manifests get their `type` only;
+   they are identity records, not concept pages.
 4. **Idempotent**: a re-run migrates zero pages.
 5. **Homepage notice** until the archive is deleted: path, size, date,
    plus "everything looks right → delete the archive" and "something
@@ -100,6 +103,10 @@ pre-migration git checkpoint + `reindex` (surgical).
 - Backup gate: archive step broken → migration refuses to run.
 - Homepage notice renders the recorded archive path and clears when
   the file is gone.
-- Foreign OKF v0.2 bundle imports into a project; `export --okf`
-  emits a bundle a strict reader accepts.
+- Foreign OKF v0.2 bundle imports into a project; `export-okf`
+  emits a bundle a strict reader accepts (a non-conformant page fails
+  the export). Import has no dedicated command by design: the format is
+  native, so unpacking a bundle's concept files into a project's wiki
+  directory and letting the watcher (or `reindex`) ingest them IS the
+  import path.
 - Retrieval regression: LongMemEval baseline re-run; no material drop.
