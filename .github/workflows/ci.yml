@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  # Manual full run (macOS legs included) — dispatch on the
+  # release-candidate SHA right before a release.
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -40,9 +44,11 @@ jobs:
       fail-fast: false
       matrix:
         # macOS catches stat / SELinux / case-sensitivity assumptions
-        # that wouldn't show up on a Linux-only matrix. Stays in step
-        # with the homelab deploy which is Linux.
-        os: [ubuntu-latest, macos-latest]
+        # that wouldn't show up on a Linux-only matrix. It costs most of
+        # the wall clock, so during iteration only Linux runs; the macOS
+        # leg joins on a `full-ci` PR label or a manual dispatch, and is
+        # MANDATORY right before a release (see AGENTS.md).
+        os: ${{ (github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && fromJSON('["ubuntu-latest", "macos-latest"]') || fromJSON('["ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -88,15 +94,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # Keep Linux on Debian bookworm so the prebuilt binary matches the
-          # Docker runtime image. macOS entries mirror the release assets.
-          - artifact: linux-x86_64
-            runner: ubuntu-22.04
-          - artifact: macos-aarch64
-            runner: macos-15
-          - artifact: macos-x86_64
-            runner: macos-15-intel
+        # Keep Linux on Debian bookworm so the prebuilt binary matches the
+        # Docker runtime image. macOS entries mirror the release assets;
+        # they run only on `full-ci` / dispatch (mandatory pre-release),
+        # like the macOS test leg above.
+        include: ${{ (github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && fromJSON('[{"artifact": "linux-x86_64", "runner": "ubuntu-22.04"}, {"artifact": "macos-aarch64", "runner": "macos-15"}, {"artifact": "macos-x86_64", "runner": "macos-15-intel"}]') || fromJSON('[{"artifact": "linux-x86_64", "runner": "ubuntu-22.04"}]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
