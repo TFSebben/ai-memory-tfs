@@ -8034,19 +8034,19 @@ mod tests {
     async fn export_okf_refuses_a_nonconformant_page() {
         let (tmp, router) = read_page_test_router();
         post_write_page(&router, "default", "scratch", "notes/a.md", "fine").await;
-        // Fabricate a pre-migration file next to it.
-        let ws_dir = std::fs::read_dir(tmp.path().join("wiki"))
-            .unwrap()
-            .next()
-            .unwrap()
-            .unwrap()
-            .path();
-        let proj_dir = std::fs::read_dir(&ws_dir)
-            .unwrap()
-            .next()
-            .unwrap()
-            .unwrap()
-            .path();
+        // Fabricate a pre-migration file next to it. The wiki root also
+        // holds `.git`; read_dir order is arbitrary, so select the
+        // UUID-named scope dirs explicitly.
+        let uuid_dir = |parent: &std::path::Path| {
+            std::fs::read_dir(parent)
+                .unwrap()
+                .flatten()
+                .map(|e| e.path())
+                .find(|p| p.is_dir() && p.file_name().is_none_or(|n| n != ".git"))
+                .expect("scope dir")
+        };
+        let ws_dir = uuid_dir(&tmp.path().join("wiki"));
+        let proj_dir = uuid_dir(&ws_dir);
         std::fs::write(
             proj_dir.join("notes/legacy.md"),
             "---\ntitle: Legacy\n---\nno type here",
