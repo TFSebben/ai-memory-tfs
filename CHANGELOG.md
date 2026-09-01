@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `memory_query` no longer fails with `fts5: syntax error` when the query is
+  natural language containing parentheses, apostrophe-quoted phrases, or a
+  stray `OR`/`AND` (e.g. *"my visit to the Museum of Modern Art (MoMA) and
+  the 'Ancient Civilizations' exhibit"*). Prepared FTS5 queries are now
+  validated against the engine's own parser and degrade to an always-valid
+  quoted bag of words when the preserved operator form does not parse;
+  deliberate well-formed operator queries are preserved as before. Found by
+  the new LongMemEval retrieval harness on its first full run.
+
+### Added
+- Added a LongMemEval retrieval benchmark to the evaluation harness
+  (`cargo run -p ai-memory-eval -- retrieval`). It drives a real
+  `ai-memory serve` subprocess end to end: haystack chat histories replay
+  through `POST /hook/batch` at the production hook cadence, questions run
+  through MCP `memory_query`, and results are scored session-level
+  (`hit@k` / `recall@k` per question category, abstention questions
+  reported separately). The 278 MB dataset is fetched on demand with a
+  pinned sha256; baselines are published under `docs/benchmarks/`. The
+  existing LLM A/B harness moved to the `ab` subcommand.
+
 ## [1.39.0] - 2026-09-01
 
 ### Added

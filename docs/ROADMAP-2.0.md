@@ -169,10 +169,32 @@ for. Most speculative, therefore last - and shaped by whatever items
   review; if it cannot demonstrate value, it ships disabled-by-default
   with the honest note, or not at all.
 
+## Item 7 - `status` truthfulness audit (pre-cut, low priority)
+
+*Why:* `status` is what a user trusts when deciding whether the system
+is healthy. Six items of new state make it easy for the display to drift
+from reality. Scheduled deliberately **after** items 1-6 so it audits
+the final surface, not a moving one.
+
+- Assessment first, fixes second: for every line `status` prints, trace
+  it to the source of truth and answer "has this been true so far?" -
+  counts vs actual rows, FTS coverage vs actual index, embedding
+  backlog vs reality, spool depth, server/bind/data-dir provenance.
+- Then the inverse: what health signal exists that `status` *doesn't*
+  show? 2.0 candidates from items 1-6: `wiki_format` generation and
+  OKF migration state, the pre-migration backup archive (present/size),
+  typed-edge and temporal-column counts, local-ONNX embedder health,
+  last eval-baseline date. Also pre-existing gaps (e.g. does anything
+  surface a wedged writer queue or a failed auto-improve scope?).
+- Same lens over the sibling surfaces that claim health: `serve`
+  startup lines, the admin console overview, and the wiki homepage.
+- Tests: each status line gets a test that breaks the underlying state
+  and proves the line changes (logic broken, never a destination).
+
 ## Sequencing and the cut
 
 ```
-1 harness → 2 OKF (+migration) → 3 typed edges → 4 temporal → 5 local-embed → 6 abstraction
+1 harness → 2 OKF (+migration) → 3 typed edges → 4 temporal → 5 local-embed → 6 abstraction → 7 status audit
 ```
 
 Each lands on main individually gated (fmt, clippy -D warnings, full
