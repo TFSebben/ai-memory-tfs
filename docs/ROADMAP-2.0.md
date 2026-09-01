@@ -198,8 +198,10 @@ the final surface, not a moving one.
 ```
 
 Each lands on main individually gated (fmt, clippy -D warnings, full
-tests, changelog guards, harness numbers where retrieval is touched).
-2.0 is cut when:
+tests, changelog guards, harness numbers where retrieval is touched) —
+**fast Linux CI only per item**; the slow macOS/Windows matrix runs
+once, mandatorily, on the release-candidate SHA before the cut (see
+AGENTS.md "CI pacing"). 2.0 is cut when:
 
 - all six items (or an explicitly-decided subset - item 6 may justifiably
   drop) are merged with docs;
@@ -207,7 +209,11 @@ tests, changelog guards, harness numbers where retrieval is touched).
   exercised against a copy of a real 1.x data dir, **including a full
   restore drill from the pre-migration backup archive**;
 - README/ARCHITECTURE reflect 2.0 reality;
-- the eval numbers are re-run and published for the final tree.
+- the eval numbers are re-run and published for the final tree;
+- the full macOS/Windows CI matrix is green on the release-candidate
+  SHA (dispatched, not assumed), and **the user has reviewed the summary
+  of everything done and explicitly approved the release** — 2.0 is
+  never cut automatically.
 
 Deploy/live-test follows the same v1.39 pipeline: exact-main gates,
 hosted CI, `compose pull` (never `bin/deploy`), health + status + a

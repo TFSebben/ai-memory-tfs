@@ -392,6 +392,13 @@ Additional boundary rules:
   `Added`/`Changed`/`Fixed` heading, past-tense, trailing `(#NNN)`
   reference) and update the relevant README/docs references in the same
   commit. Internal refactors and test-only churn are exempt.
+- **CI pacing: fast per merge, full matrix before release.** Every
+  implementation merge gates on the fast Linux jobs only. The slow
+  macOS/Windows legs run on a `full-ci` PR label, nightly (windows), or
+  manual dispatch — and running them is **mandatory right before a
+  release**: dispatch `ci` (macOS legs) and `windows` on the exact
+  release-candidate SHA and wait for green before tagging. Never tag a
+  release whose SHA lacks a green full matrix.
 - **No version bumps or release tags without explicit user approval.**
   Do not bump crate/package versions automatically.
 - **PR evaluation:** report pros, cons, and recommended fix, then ask for
