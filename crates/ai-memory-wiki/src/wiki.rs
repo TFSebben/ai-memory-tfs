@@ -3926,8 +3926,6 @@ mod tests {
             .unwrap();
 
         // Pre-load an actual users row so author_id can FK-resolve.
-        let pepper = ai_memory_store::TokenPepper::new("test-pepper-attribution");
-        let token_hash = ai_memory_store::hash_token("test-token", &pepper);
         let mut new_user = NewUser {
             username: "alice".into(),
             name: Some("Alice Smith".into()),
@@ -3936,7 +3934,7 @@ mod tests {
         new_user.validate().unwrap();
         let user_id: UserId = store
             .writer
-            .create_user(new_user, token_hash)
+            .create_human_user(new_user, ai_memory_core::UserRole::User, None, false)
             .await
             .unwrap();
 
