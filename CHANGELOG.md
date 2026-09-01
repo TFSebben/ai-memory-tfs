@@ -333,6 +333,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 
+- Reworked the README around the September 2026 research pass: a humanized
+  "Why ai-memory" differentiator section and "How it works" flow up top, a
+  compact support matrix, and a shorter quick start. Detail sections moved
+  verbatim into linked docs: `docs/support-matrix.md` (full per-agent matrix),
+  `docs/use-cases.md`, `docs/llm-providers.md`, and `docs/security.md`.
+  Added `docs/research-2026-landscape.md` and follow-up pointers in the four
+  May 2026 research documents.
 - `docs/windows.md` gains **Scenario E**, a persistent-server story for native
   Windows. Scenarios C and D both ended at `ai-memory serve` in a foreground
   terminal, while Linux got `Restart=on-failure` from the packaged systemd
