@@ -13,6 +13,7 @@ pub mod ingest_metrics;
 pub use ingest_metrics::{IngestMetrics, IngestMetricsSnapshot};
 pub mod ids;
 pub mod observation;
+pub mod okf;
 pub mod page;
 pub mod routing_skills;
 pub mod scaffolding;

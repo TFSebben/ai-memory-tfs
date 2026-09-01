@@ -598,6 +598,19 @@ pub(crate) fn path_search_text(path: &str) -> String {
     format!("{segments} {words}")
 }
 
+/// Stamp the per-version `generated.at` (write time, UTC) onto conformed
+/// frontmatter and serialize it. Runs only on the paths that create a new
+/// version row — the idempotent short-circuit above never reaches it, so
+/// an unchanged page keeps its original timestamp.
+fn stamped_frontmatter(mut conformed: serde_json::Value, now_us: i64) -> StoreResult<String> {
+    let ts = jiff::Timestamp::from_microsecond(now_us)
+        .unwrap_or(jiff::Timestamp::UNIX_EPOCH)
+        .strftime("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
+    ai_memory_core::okf::stamp_generated_at(&mut conformed, &ts);
+    Ok(serde_json::to_string(&conformed)?)
+}
+
 pub(crate) fn upsert_page_in_tx(
     tx: &rusqlite::Transaction<'_>,
     page: &NewPage,
@@ -609,7 +622,12 @@ pub(crate) fn upsert_page_in_tx(
         hasher.update(page.body.as_bytes());
         hasher.finalize().into()
     };
-    let frontmatter_str = serde_json::to_string(&page.frontmatter_json)?;
+    // OKF conformance at the single write choke point (docs/okf.md):
+    // fill the deterministic keys, compare idempotency modulo the
+    // per-version `generated.at`, and stamp `at` only when content
+    // actually changed (below).
+    let mut conformed = page.frontmatter_json.clone();
+    ai_memory_core::okf::conform_frontmatter(page.path.as_str(), &mut conformed);
     let tier_str = page.tier.as_str();
 
     let existing: Option<ExistingPageVersion> = tx
@@ -635,14 +653,18 @@ pub(crate) fn upsert_page_in_tx(
         .optional()?;
 
     if let Some(existing) = existing {
+        let existing_fm: serde_json::Value =
+            serde_json::from_str(&existing.frontmatter_json).unwrap_or_default();
         if existing.body_sha256 == body_sha256
-            && existing.frontmatter_json == frontmatter_str
+            && ai_memory_core::okf::strip_generated_at(&existing_fm)
+                == ai_memory_core::okf::strip_generated_at(&conformed)
             && existing.title == page.title
             && existing.tier == tier_str
             && existing.pinned == i64::from(page.pinned)
         {
             return PageId::from_slice(&existing.id).map_err(StoreError::from);
         }
+        let frontmatter_str = stamped_frontmatter(conformed, now)?;
         let new_id = PageId::new();
         tx.execute(
             "UPDATE pages SET is_latest = 0 WHERE id = ?1",
@@ -688,6 +710,7 @@ pub(crate) fn upsert_page_in_tx(
         )?;
         return Ok(new_id);
     }
+    let frontmatter_str = stamped_frontmatter(conformed, now)?;
     let new_id = PageId::new();
     tx.execute(
         "INSERT INTO pages \
@@ -5925,6 +5948,91 @@ pub(crate) mod tests {
             )
             .unwrap();
         assert_eq!(total, 1, "no duplicate row for unchanged content");
+    }
+
+    /// OKF conformance happens at this choke point for every writer
+    /// (docs/okf.md): a page stored with bare frontmatter comes back
+    /// with the required `type`, a `generated {by, at}` stanza, and
+    /// provenance derived from the session stamp. Breaking the
+    /// conform call fails this test.
+    #[test]
+    fn stored_pages_are_okf_conformant() {
+        let (_tmp, mut conn, ws, proj) = fresh_db();
+        let mut p = page(ws, proj, "gotchas/build.md", "watch out");
+        p.frontmatter_json = serde_json::json!({
+            "title": "Build gotcha",
+            "session_id": "0192aaaa-0000-7000-8000-000000000000",
+            "agent": "claude-code",
+        });
+        let id = upsert_page(&mut conn, &p).unwrap();
+        let fm: String = conn
+            .query_row(
+                "SELECT frontmatter_json FROM pages WHERE id = ?1",
+                params![id.as_bytes()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let fm: serde_json::Value = serde_json::from_str(&fm).unwrap();
+        assert_eq!(fm["type"], "Gotcha");
+        assert!(
+            fm["generated"]["by"]
+                .as_str()
+                .unwrap()
+                .starts_with("process:ai-memory/")
+        );
+        assert!(
+            fm["generated"]["at"].as_str().unwrap().ends_with('Z'),
+            "generated.at stamped on the new version"
+        );
+        assert_eq!(
+            fm["sources"][0]["resource"],
+            "ai-memory://session/0192aaaa-0000-7000-8000-000000000000"
+        );
+        // producer keys survive as extensions
+        assert_eq!(fm["agent"], "claude-code");
+    }
+
+    /// The critical interaction: conformance adds `generated.at`, which
+    /// differs per write — an unchanged page must STILL be a noop, or
+    /// every rewrite would supersede itself over a timestamp.
+    #[test]
+    fn conformance_does_not_break_idempotent_rewrites() {
+        let (_tmp, mut conn, ws, proj) = fresh_db();
+        let mut p = page(ws, proj, "notes/idem.md", "stable body");
+        p.frontmatter_json = serde_json::json!({"title": "Idem"});
+        let id1 = upsert_page(&mut conn, &p).unwrap();
+        let id2 = upsert_page(&mut conn, &p).unwrap();
+        assert_eq!(
+            id1, id2,
+            "conformed rewrite of identical content superseded"
+        );
+        let versions: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pages WHERE path = ?1",
+                params!["notes/idem.md"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(versions, 1);
+    }
+
+    /// A producer that already writes a `type` keeps it verbatim — the
+    /// choke point repairs, it never overrules.
+    #[test]
+    fn an_explicit_producer_type_survives_the_choke_point() {
+        let (_tmp, mut conn, ws, proj) = fresh_db();
+        let mut p = page(ws, proj, "notes/custom.md", "body");
+        p.frontmatter_json = serde_json::json!({"type": "Custom Kind"});
+        let id = upsert_page(&mut conn, &p).unwrap();
+        let fm: String = conn
+            .query_row(
+                "SELECT frontmatter_json FROM pages WHERE id = ?1",
+                params![id.as_bytes()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let fm: serde_json::Value = serde_json::from_str(&fm).unwrap();
+        assert_eq!(fm["type"], "Custom Kind");
     }
 
     #[test]
