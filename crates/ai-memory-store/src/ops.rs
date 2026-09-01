@@ -598,6 +598,98 @@ pub(crate) fn path_search_text(path: &str) -> String {
     format!("{segments} {words}")
 }
 
+/// Count latest page rows whose frontmatter is not yet OKF-conformant
+/// (missing `type` or `generated.at`). Read-only; the migration uses it
+/// to decide whether the backup gate must engage at all.
+pub fn okf_nonconformant_latest_pages(conn: &Connection) -> StoreResult<u64> {
+    let mut stmt = conn.prepare("SELECT path, frontmatter_json FROM pages WHERE is_latest = 1")?;
+    let rows: Vec<(String, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    let mut pending = 0u64;
+    for (path, fm_str) in rows {
+        let fm: serde_json::Value = serde_json::from_str(&fm_str).unwrap_or_default();
+        let mut conformed = fm.clone();
+        ai_memory_core::okf::conform_frontmatter(&path, &mut conformed);
+        if conformed != fm || ai_memory_core::okf::generated_at(&fm).is_none() {
+            pending += 1;
+        }
+    }
+    Ok(pending)
+}
+
+/// One latest-page row rewritten in place by [`okf_migrate_latest_pages`].
+#[derive(Debug, Clone)]
+pub struct OkfMigratedPage {
+    /// Owning workspace.
+    pub workspace_id: ai_memory_core::WorkspaceId,
+    /// Owning project.
+    pub project_id: ai_memory_core::ProjectId,
+    /// Wiki-relative page path.
+    pub path: String,
+    /// The `generated.at` stamped from the row's own `updated_at`.
+    pub generated_at: String,
+}
+
+/// One-shot OKF migration of every latest page row (docs/okf.md): conform
+/// the frontmatter IN PLACE — same id, same version row, `updated_at`
+/// untouched, body untouched — stamping `generated.at` from the row's own
+/// `updated_at` so nothing looks freshly written. Historical versions
+/// (`is_latest = 0`) stay as they were. Idempotent: conformed rows are
+/// left alone, so a re-run rewrites zero pages.
+pub fn okf_migrate_latest_pages(conn: &mut Connection) -> StoreResult<Vec<OkfMigratedPage>> {
+    type LatestPageRow = (Vec<u8>, Vec<u8>, Vec<u8>, String, String, i64);
+    let tx = conn.transaction()?;
+    let mut migrated = Vec::new();
+    {
+        let mut stmt = tx.prepare(
+            "SELECT id, workspace_id, project_id, path, frontmatter_json, updated_at              FROM pages WHERE is_latest = 1",
+        )?;
+        let rows: Vec<LatestPageRow> = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            })?
+            .collect::<Result<_, _>>()?;
+        drop(stmt);
+        for (id, ws, proj, path, fm_str, updated_at) in rows {
+            let fm: serde_json::Value = serde_json::from_str(&fm_str).unwrap_or_default();
+            let mut conformed = fm.clone();
+            ai_memory_core::okf::conform_frontmatter(&path, &mut conformed);
+            let at = jiff::Timestamp::from_microsecond(updated_at)
+                .unwrap_or(jiff::Timestamp::UNIX_EPOCH)
+                .strftime("%Y-%m-%dT%H:%M:%SZ")
+                .to_string();
+            if ai_memory_core::okf::generated_at(&conformed).is_none() {
+                ai_memory_core::okf::stamp_generated_at(&mut conformed, &at);
+            }
+            if conformed == fm {
+                continue;
+            }
+            tx.execute(
+                "UPDATE pages SET frontmatter_json = ?1 WHERE id = ?2",
+                params![serde_json::to_string(&conformed)?, id],
+            )?;
+            migrated.push(OkfMigratedPage {
+                workspace_id: ai_memory_core::WorkspaceId::from_slice(&ws)?,
+                project_id: ai_memory_core::ProjectId::from_slice(&proj)?,
+                path,
+                generated_at: ai_memory_core::okf::generated_at(&conformed)
+                    .unwrap_or(&at)
+                    .to_string(),
+            });
+        }
+    }
+    tx.commit()?;
+    Ok(migrated)
+}
+
 /// Stamp the per-version `generated.at` (write time, UTC) onto conformed
 /// frontmatter and serialize it. Runs only on the paths that create a new
 /// version row — the idempotent short-circuit above never reaches it, so

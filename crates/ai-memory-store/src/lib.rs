@@ -51,8 +51,8 @@ pub use maintenance::MaintenanceJob;
 pub use ops::{
     AdmittedSession, CompactSummary, Compaction, DeleteWorkspaceSummary, EmbedOutcome,
     EmbeddingWrite, HookSessionAdmission, IngestObservationOutcome, LifecycleOnlyEndOutcome,
-    MoveSessionSummary, MoveSummary, ObservationPruneOutcome, PagesMode, PurgeSessionSummary,
-    PurgeSummary, ReorgSummary, purge_session, record_embed_failure,
+    MoveSessionSummary, MoveSummary, ObservationPruneOutcome, OkfMigratedPage, PagesMode,
+    PurgeSessionSummary, PurgeSummary, ReorgSummary, purge_session, record_embed_failure,
 };
 pub use reader::{
     ActivityWindow, AgentSessionCount, AuditEvent, AuditLogFilter, AutoImproveCandidateSession,
