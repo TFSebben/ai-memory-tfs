@@ -164,6 +164,12 @@ pub fn stamp_generated_at(frontmatter: &mut Value, at_iso8601: &str) {
     }
 }
 
+/// The `generated.at` value, when present.
+#[must_use]
+pub fn generated_at(frontmatter: &Value) -> Option<&str> {
+    frontmatter.get("generated")?.get("at")?.as_str()
+}
+
 /// A file-level conformance verdict for one page's frontmatter.
 #[must_use]
 pub fn is_conformant(frontmatter: &Value) -> bool {

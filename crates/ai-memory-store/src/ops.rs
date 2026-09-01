@@ -603,11 +603,16 @@ pub(crate) fn path_search_text(path: &str) -> String {
 /// version row — the idempotent short-circuit above never reaches it, so
 /// an unchanged page keeps its original timestamp.
 fn stamped_frontmatter(mut conformed: serde_json::Value, now_us: i64) -> StoreResult<String> {
-    let ts = jiff::Timestamp::from_microsecond(now_us)
-        .unwrap_or(jiff::Timestamp::UNIX_EPOCH)
-        .strftime("%Y-%m-%dT%H:%M:%SZ")
-        .to_string();
-    ai_memory_core::okf::stamp_generated_at(&mut conformed, &ts);
+    // The wiki layer stamps (or inherits) `generated.at` before the file
+    // is emitted; keep that value so file and row stay byte-aligned. The
+    // stamp here covers writers that reach the store without a wiki file.
+    if ai_memory_core::okf::generated_at(&conformed).is_none() {
+        let ts = jiff::Timestamp::from_microsecond(now_us)
+            .unwrap_or(jiff::Timestamp::UNIX_EPOCH)
+            .strftime("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
+        ai_memory_core::okf::stamp_generated_at(&mut conformed, &ts);
+    }
     Ok(serde_json::to_string(&conformed)?)
 }
 
