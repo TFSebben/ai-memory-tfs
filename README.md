@@ -343,6 +343,7 @@ diagram, crate breakdown, schema notes, and invariants.
 - [`docs/llm-providers.md`](docs/llm-providers.md) - provider configuration.
 - [`docs/security.md`](docs/security.md) - the full security model.
 - [`docs/research-2026-landscape.md`](docs/research-2026-landscape.md) - how the field looks and where we sit in it.
+- [`docs/ROADMAP-2.0.md`](docs/ROADMAP-2.0.md) - the plan for the 2.0 release, one item at a time.
 - [`docs/ROADMAP-2.0.md`](docs/ROADMAP-2.0.md) - the 2.0 plan.
 
 ## Influences and prior art
