@@ -48,20 +48,55 @@ impl BackupReceipt {
     }
 }
 
-/// Destination directory for archives: the explicit override when given
-/// (callers read `AI_MEMORY_BACKUP_DIR`), else the user's home. Erroring
-/// (rather than falling back into the data dir) is deliberate: a backup
-/// inside the tree it protects is not a backup.
-fn destination_dir(dest_override: Option<&Path>) -> WikiResult<PathBuf> {
-    if let Some(dir) = dest_override {
-        return Ok(dir.to_path_buf());
+/// Whether this process runs inside a container. Same signals as the
+/// serve handler: the official image sets `AI_MEMORY_IN_CONTAINER`;
+/// `/.dockerenv` (Docker) and `/run/.containerenv` (Podman) cover
+/// images that do not.
+#[must_use]
+pub fn running_in_container() -> bool {
+    if std::env::var("AI_MEMORY_IN_CONTAINER").is_ok_and(|v| !v.trim().is_empty()) {
+        return true;
     }
-    dirs::home_dir().ok_or_else(|| {
-        WikiError::Io(std::io::Error::other(
-            "no home directory found for the pre-migration backup; \
-             set AI_MEMORY_BACKUP_DIR to a directory outside the data dir",
-        ))
-    })
+    Path::new("/.dockerenv").exists() || Path::new("/run/.containerenv").exists()
+}
+
+/// Destination directory for archives.
+///
+/// - the explicit override wins (callers read `AI_MEMORY_BACKUP_DIR`);
+/// - **in a container, the user's home is ephemeral** — it lives in the
+///   container layer and is destroyed on the next recreation, which
+///   would silently lose the safety archive. The only storage
+///   guaranteed to persist is the data-dir volume, so the default there
+///   is `<data_dir>/backups/` (excluded from the archive itself);
+/// - otherwise the user's home.
+///
+/// The destination may live inside the data dir (the archive protects
+/// against the MIGRATION corrupting content, not against disk loss, and
+/// the walk excludes it), but never the data dir root itself.
+fn destination_dir(
+    dest_override: Option<&Path>,
+    data_dir: &Path,
+    in_container: bool,
+) -> WikiResult<PathBuf> {
+    let dest = if let Some(dir) = dest_override {
+        dir.to_path_buf()
+    } else if in_container {
+        data_dir.join("backups")
+    } else {
+        dirs::home_dir().ok_or_else(|| {
+            WikiError::Io(std::io::Error::other(
+                "no home directory found for the pre-migration backup; \
+                 set AI_MEMORY_BACKUP_DIR to a directory outside the data dir",
+            ))
+        })?
+    };
+    if dest == data_dir {
+        return Err(WikiError::Io(std::io::Error::other(
+            "the backup destination must not be the data dir root itself; \
+             use a subdirectory (e.g. <data_dir>/backups) or a path outside it",
+        )));
+    }
+    Ok(dest)
 }
 
 /// Compress `data_dir` into a timestamped tar.gz in the destination dir,
@@ -72,7 +107,16 @@ pub fn create_pre_migration_backup(
     label: &str,
     dest_override: Option<&Path>,
 ) -> WikiResult<BackupReceipt> {
-    let dest_dir = destination_dir(dest_override)?;
+    create_pre_migration_backup_inner(data_dir, label, dest_override, running_in_container())
+}
+
+fn create_pre_migration_backup_inner(
+    data_dir: &Path,
+    label: &str,
+    dest_override: Option<&Path>,
+    in_container: bool,
+) -> WikiResult<BackupReceipt> {
+    let dest_dir = destination_dir(dest_override, data_dir, in_container)?;
     std::fs::create_dir_all(&dest_dir)?;
     let stamp = jiff::Timestamp::now().strftime("%Y%m%d-%H%M%S").to_string();
     let archive_path = dest_dir.join(format!("ai-memory-backup-{label}-{stamp}.tar.gz"));
@@ -95,8 +139,22 @@ pub fn create_pre_migration_backup(
                     .map_err(|e| WikiError::Io(std::io::Error::other(e)))?;
                 let ft = entry.file_type()?;
                 if ft.is_dir() {
+                    // Never archive the destination itself (a container
+                    // default of <data_dir>/backups, or an override
+                    // pointed inside the data dir) — self-inclusion
+                    // would tar the half-written archive.
+                    if path == dest_dir {
+                        continue;
+                    }
                     stack.push(path);
                 } else if ft.is_file() {
+                    if path == archive_path
+                        || path
+                            .file_name()
+                            .is_some_and(|n| n == "pre-migration-backup.json.tmp")
+                    {
+                        continue;
+                    }
                     tar.append_path_with_name(&path, rel)?;
                     expected += 1;
                 }
@@ -181,6 +239,45 @@ mod tests {
             BackupReceipt::load(data.path()).is_none(),
             "no receipt without an archive"
         );
+    }
+
+    /// In a container the home dir is ephemeral (destroyed on the next
+    /// recreation), so the default destination is the data-dir volume's
+    /// backups/ subdir — and the archive must not swallow itself.
+    #[test]
+    fn in_a_container_the_archive_lands_on_the_data_volume() {
+        let data = data_dir_with_content();
+        let receipt = create_pre_migration_backup_inner(data.path(), "test", None, true).unwrap();
+        assert!(
+            receipt
+                .archive_path
+                .starts_with(data.path().join("backups"))
+        );
+        // The two data files, not the archive or receipt.
+        assert_eq!(receipt.entries, 2);
+        assert!(receipt.archive_present());
+    }
+
+    /// A destination inside the data dir (container default or an
+    /// override) is excluded from the walk: entry counts match the
+    /// verification pass and a second backup does not tar the first.
+    #[test]
+    fn a_destination_inside_the_data_dir_is_never_self_included() {
+        let data = data_dir_with_content();
+        let dest = data.path().join("backups");
+        let first = create_pre_migration_backup(data.path(), "test", Some(&dest)).unwrap();
+        assert_eq!(first.entries, 2);
+        // Receipt now exists in the data dir; a second run must archive
+        // it (a real file) but never the prior archive in backups/.
+        let second = create_pre_migration_backup(data.path(), "test", Some(&dest)).unwrap();
+        assert_eq!(second.entries, 3, "data files + first receipt");
+    }
+
+    #[test]
+    fn the_data_dir_root_is_refused_as_a_destination() {
+        let data = data_dir_with_content();
+        let err = create_pre_migration_backup(data.path(), "test", Some(data.path()));
+        assert!(err.is_err(), "data dir root must be refused");
     }
 
     #[test]

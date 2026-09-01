@@ -38,6 +38,32 @@ The migration is idempotent: restarting the server re-runs nothing and
 never takes a second backup. Fresh installs skip all of it, including
 the backup.
 
+## Running in a server or container (docker deploys)
+
+Inside a container the home directory is **ephemeral** — it lives in
+the container layer and is destroyed on the next `docker compose up
+-d` recreation, which would silently lose the safety archive. The
+migration detects containers (the official image's
+`AI_MEMORY_IN_CONTAINER`, or `/.dockerenv` / `/run/.containerenv`) and
+defaults the archive to the persistent data volume instead:
+
+```
+/data/backups/ai-memory-backup-okf-v0.2-<date>.tar.gz
+```
+
+The archive survives redeploys with the volume, and the backups
+directory is excluded from the archive itself. To copy it off-host:
+
+```bash
+docker cp ai-memory:/data/backups/ai-memory-backup-okf-v0.2-<date>.tar.gz .
+# or read it straight from the volume's host path
+```
+
+`AI_MEMORY_BACKUP_DIR` still wins when set (point it at another
+mounted volume if you prefer). Deleting the archive — from inside or
+outside the container — clears the homepage notice, same as on a
+workstation.
+
 ## After the migration
 
 The wiki homepage shows a notice with the archive's location, size and
