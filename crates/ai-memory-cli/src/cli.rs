@@ -86,6 +86,8 @@ pub enum Command {
     Compact(CompactArgs),
     /// Snapshot wiki/, db/, and config.toml into a gzipped tarball.
     Backup(BackupArgs),
+    /// Export one project's wiki as an OKF v0.2 bundle tarball.
+    ExportOkf(ExportOkfArgs),
     /// Restore a backup tarball into the data directory.
     Restore(RestoreArgs),
     /// Rebuild the SQLite index from the wiki/ markdown (the "DB is
@@ -1290,6 +1292,20 @@ pub struct ResetArgs {
 /// Arguments for `backup`.
 #[derive(Debug, Args)]
 pub struct BackupArgs {
+    /// Destination tarball (`.tar.gz`).
+    #[arg(long, short = 'o')]
+    pub to: PathBuf,
+}
+
+/// Arguments for `export-okf`.
+#[derive(Debug, Args)]
+pub struct ExportOkfArgs {
+    /// Workspace the project lives in.
+    #[arg(long, default_value = "default")]
+    pub workspace: String,
+    /// Project to export.
+    #[arg(long)]
+    pub project: String,
     /// Destination tarball (`.tar.gz`).
     #[arg(long, short = 'o')]
     pub to: PathBuf,

@@ -386,6 +386,14 @@ pub(crate) enum WriteCmd {
         author_id: Option<ai_memory_core::UserId>,
         reply: oneshot::Sender<StoreResult<()>>,
     },
+    /// One-shot in-place OKF conformance of every latest page row.
+    OkfMigrateLatestPages {
+        reply: oneshot::Sender<StoreResult<Vec<ops::OkfMigratedPage>>>,
+    },
+    /// Read-only count of latest rows still lacking OKF conformance.
+    OkfNonconformantCount {
+        reply: oneshot::Sender<StoreResult<u64>>,
+    },
     /// Record a successfully-applied wiki-structure migration.
     InsertWikiMigration {
         name: String,
@@ -1599,6 +1607,31 @@ impl WriterHandle {
             reply: tx,
         })
         .await?;
+        rx.await.map_err(|_| StoreError::WriterClosed)?
+    }
+
+    /// Conform every latest page row to OKF in place (docs/okf.md);
+    /// returns the rewritten pages so the wiki layer can align files.
+    ///
+    /// # Errors
+    /// Returns [`StoreError::WriterClosed`] if the actor has shut down, or
+    /// propagates the SQL error.
+    pub async fn okf_migrate_latest_pages(&self) -> StoreResult<Vec<ops::OkfMigratedPage>> {
+        let (tx, rx) = oneshot::channel();
+        self.send(WriteCmd::OkfMigrateLatestPages { reply: tx })
+            .await?;
+        rx.await.map_err(|_| StoreError::WriterClosed)?
+    }
+
+    /// Count latest page rows still lacking OKF conformance (read-only).
+    ///
+    /// # Errors
+    /// Returns [`StoreError::WriterClosed`] if the actor has shut down, or
+    /// propagates the SQL error.
+    pub async fn okf_nonconformant_count(&self) -> StoreResult<u64> {
+        let (tx, rx) = oneshot::channel();
+        self.send(WriteCmd::OkfNonconformantCount { reply: tx })
+            .await?;
         rx.await.map_err(|_| StoreError::WriterClosed)?
     }
 
@@ -2862,6 +2895,14 @@ fn worker_loop(mut conn: Connection, mut rx: mpsc::Receiver<WriteCmd>) {
                     author_id,
                 );
                 send_or_warn(reply, result, "rename_project");
+            }
+            WriteCmd::OkfMigrateLatestPages { reply } => {
+                let result = ops::okf_migrate_latest_pages(&mut conn);
+                send_or_warn(reply, result, "okf_migrate_latest_pages");
+            }
+            WriteCmd::OkfNonconformantCount { reply } => {
+                let result = ops::okf_nonconformant_latest_pages(&conn);
+                send_or_warn(reply, result, "okf_nonconformant_count");
             }
             WriteCmd::InsertWikiMigration {
                 name,

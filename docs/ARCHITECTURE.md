@@ -475,7 +475,7 @@ reorg                purge-project        rename-project
 move-project         move-session         uninstall
 auth                 user                 completions
 handoffs             purge-session        compact
-api-key
+api-key              export-okf
 ```
 
 Run `ai-memory --help` for the full tree.

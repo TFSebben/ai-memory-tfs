@@ -7,17 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- `memory_query` no longer fails with `fts5: syntax error` when the query is
-  natural language containing parentheses, apostrophe-quoted phrases, or a
-  stray `OR`/`AND` (e.g. *"my visit to the Museum of Modern Art (MoMA) and
-  the 'Ancient Civilizations' exhibit"*). Prepared FTS5 queries are now
-  validated against the engine's own parser and degrade to an always-valid
-  quoted bag of words when the preserved operator form does not parse;
-  deliberate well-formed operator queries are preserved as before. Found by
-  the new LongMemEval retrieval harness on its first full run.
-
 ### Added
+- `ai-memory export-okf --project <p> -o <bundle.tar.gz>` and
+  `POST /admin/export-okf` — stream one project's wiki as a validated
+  OKF v0.2 bundle with a freshly generated index; a non-conformant page
+  fails the export. Importing needs no command: unpack a bundle's
+  concept files into a project's wiki directory and the watcher (or
+  `reindex`) ingests them.
 - Added a LongMemEval retrieval benchmark to the evaluation harness
   (`cargo run -p ai-memory-eval -- retrieval`). It drives a real
   `ai-memory serve` subprocess end to end: haystack chat histories replay
@@ -27,6 +23,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reported separately). The 278 MB dataset is fetched on demand with a
   pinned sha256; baselines are published under `docs/benchmarks/`. The
   existing LLM A/B harness moved to the `ab` subcommand.
+### Changed
+- The wiki's on-disk format is now natively the Open Knowledge Format
+  (OKF) v0.2: every page write fills the spec's `type`, `generated`,
+  `sources` and `stale_after` keys (ai-memory's own fields ride along as
+  spec-safe extensions), and each project directory is a conformant OKF
+  bundle with an `okf_version` index. Existing stores are migrated
+  automatically on the first 2.0 start — **backup-gated**: the entire
+  data dir is archived to the user's home (or `AI_MEMORY_BACKUP_DIR`)
+  and verified first, or the migration refuses to run; pages are
+  rewritten in place (same ids, same version rows, timestamps
+  untouched), and the wiki homepage shows where the archive is until it
+  is deleted. A data dir migrated by a newer binary is refused by older
+  2.0+ binaries instead of silently mixing formats. See
+  `docs/okf.md` and `docs/MIGRATION-2.0.md`.
+
+### Fixed
+- `memory_query` no longer fails with `fts5: syntax error` when the query is
+  natural language containing parentheses, apostrophe-quoted phrases, or a
+  stray `OR`/`AND` (e.g. *"my visit to the Museum of Modern Art (MoMA) and
+  the 'Ancient Civilizations' exhibit"*). Prepared FTS5 queries are now
+  validated against the engine's own parser and degrade to an always-valid
+  quoted bag of words when the preserved operator form does not parse;
+  deliberate well-formed operator queries are preserved as before. Found by
+  the new LongMemEval retrieval harness on its first full run.
 
 ## [1.39.0] - 2026-09-01
 
