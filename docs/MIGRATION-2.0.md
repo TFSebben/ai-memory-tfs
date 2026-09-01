@@ -66,8 +66,11 @@ workstation.
 
 ## After the migration
 
-The wiki homepage shows a notice with the archive's location, size and
-date until you delete the archive file:
+The first visit to the wiki homepage opens a one-time dialog explaining
+the upgrade and the recovery steps, with a "do not show me again"
+checkbox (per browser; a future migration shows it again). Separately,
+a banner shows the archive's location, size and date until you delete
+the archive file:
 
 - **Everything looks right?** Delete the archive; the notice disappears
   on its own.

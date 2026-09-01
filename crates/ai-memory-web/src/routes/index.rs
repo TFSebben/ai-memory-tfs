@@ -8,7 +8,9 @@ use axum::http::StatusCode;
 use axum::response::Html;
 
 use crate::state::WebState;
-use crate::templates::{BackupNotice, ProjectCard, ProjectsView, humanize, project_href};
+use crate::templates::{
+    BackupNotice, OkfDialog, ProjectCard, ProjectsView, humanize, project_href,
+};
 
 /// Handler for `GET /`.
 pub(crate) async fn handler(
@@ -36,13 +38,28 @@ pub(crate) async fn handler(
         .collect();
 
     let backup_notice = backup_notice(&state);
+    let okf_dialog = okf_dialog(&state);
     let html = ProjectsView {
         projects,
         backup_notice,
+        okf_dialog,
     }
     .render()
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Html(html))
+}
+
+/// The one-time migration explainer: rendered whenever a receipt
+/// exists — even after the archive was deleted, so the "what happened"
+/// context stays reachable — and dismissed per browser client-side.
+fn okf_dialog(state: &WebState) -> Option<OkfDialog> {
+    let receipt = ai_memory_wiki::backup::BackupReceipt::load(state.wiki.data_dir())?;
+    Some(OkfDialog {
+        archive_present: receipt.archive_present(),
+        archive_path: receipt.archive_path.display().to_string(),
+        size_human: human_bytes(receipt.size_bytes),
+        created_at: receipt.created_at,
+    })
 }
 
 /// The migration's backup receipt, surfaced while the archive is still

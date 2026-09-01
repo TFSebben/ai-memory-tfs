@@ -124,6 +124,21 @@ pub(crate) struct BackupNotice {
     pub created_at: String,
 }
 
+/// The one-time 2.0 migration explainer dialog (docs/okf.md): shown
+/// whenever a migration receipt exists, dismissed per browser via a
+/// "do not show me again" checkbox persisted in localStorage keyed by
+/// the migration timestamp (a future migration re-shows it).
+pub(crate) struct OkfDialog {
+    /// Absolute archive path from the receipt.
+    pub archive_path: String,
+    /// Human-readable archive size.
+    pub size_human: String,
+    /// Migration timestamp — also the localStorage dismissal key.
+    pub created_at: String,
+    /// Whether the archive file still exists (adapts the recovery text).
+    pub archive_present: bool,
+}
+
 /// View-model for `GET /`.
 #[derive(Template)]
 #[template(path = "projects.html")]
@@ -132,6 +147,9 @@ pub(crate) struct ProjectsView {
     pub projects: Vec<ProjectCard>,
     /// Present while a pre-migration backup archive still exists.
     pub backup_notice: Option<BackupNotice>,
+    /// Present whenever a migration receipt exists (dialog dismissal is
+    /// client-side, per browser).
+    pub okf_dialog: Option<OkfDialog>,
 }
 
 // ---------------------------------------------------------------------------
