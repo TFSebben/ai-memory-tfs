@@ -72,6 +72,20 @@ knowledge portable to any OKF-aware consumer.
   Renaming/adding frontmatter across every page via normal writes would
   supersede every page in every store (version explosion, embedding
   invalidation, `updated_at` stampede). Instead:
+  - **proactive backup before anything is touched**: the migration's
+    first step compresses the entire data dir (wiki files, SQLite DB,
+    manifest) into a timestamped archive *outside* the data dir, in the
+    user's home (e.g. `~/ai-memory-backup-pre-2.0-<date>.tar.gz`),
+    verifies the archive is readable (entry listing + size sanity)
+    before proceeding, and **aborts the migration if the backup cannot
+    be written or verified** - no backup, no migration. The archive
+    path is recorded in the wiki meta manifest.
+  - **the HTML wiki homepage surfaces the backup**: after migration,
+    `serve`'s homepage shows a notice with the archive's path, size,
+    and date, plus the two exits: "everything looks right → delete the
+    archive" and "something is missing → restore steps" (linking the
+    restore section of `docs/MIGRATION-2.0.md`). The notice is
+    dismissible and disappears once the archive is deleted.
   - a dedicated one-shot migration: rewrite frontmatter **in place**,
     same page id, same version row, body untouched; single git commit
     ("okf-migration") with a pre-migration checkpoint; reindex after.
@@ -82,7 +96,9 @@ knowledge portable to any OKF-aware consumer.
   - idempotent: re-running migrates zero pages.
 - Round-trip tests: our page → OKF file → parsed back identical; foreign
   OKF bundle imports into a project; migration control test proves the
-  no-churn property (same ids before/after).
+  no-churn property (same ids before/after); backup control test - break
+  the archive step and the migration must refuse to run; homepage notice
+  renders the recorded archive path and clears when the file is gone.
 - `ai-memory export --okf <dir>` / `import --okf` for the non-native
   direction regardless, for interop with bundles outside the store.
 
@@ -166,7 +182,8 @@ tests, changelog guards, harness numbers where retrieval is touched).
 - all six items (or an explicitly-decided subset - item 6 may justifiably
   drop) are merged with docs;
 - `docs/MIGRATION-2.0.md` reads as a complete upgrade guide and has been
-  exercised against a copy of a real 1.x data dir;
+  exercised against a copy of a real 1.x data dir, **including a full
+  restore drill from the pre-migration backup archive**;
 - README/ARCHITECTURE reflect 2.0 reality;
 - the eval numbers are re-run and published for the final tree.
 
